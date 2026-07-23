@@ -7,6 +7,7 @@
 package hlc
 
 import (
+	"math"
 	"sync"
 	"time"
 )
@@ -55,7 +56,7 @@ func (c *Clock) Now() Timestamp {
 	if phys > c.last.WallMS {
 		c.last = Timestamp{WallMS: phys, Logical: 0}
 	} else {
-		c.last.Logical++
+		c.last = bump(c.last.WallMS, c.last.Logical)
 	}
 	return c.last
 }
@@ -82,14 +83,26 @@ func (c *Clock) Observe(remote Timestamp) Timestamp {
 		if remote.Logical > logical {
 			logical = remote.Logical
 		}
-		c.last.Logical = logical + 1
+		c.last = bump(wall, logical)
 	case wall == c.last.WallMS:
-		c.last.Logical++
+		c.last = bump(wall, c.last.Logical)
 	case wall == remote.WallMS:
-		c.last.Logical = remote.Logical + 1
+		c.last = bump(wall, remote.Logical)
 	default: // physical time dominates both
-		c.last.Logical = 0
+		c.last = Timestamp{WallMS: wall, Logical: 0}
 	}
-	c.last.WallMS = wall
 	return c.last
+}
+
+// bump returns the timestamp one logical step past baseLogical at wall,
+// carrying into the wall component when the logical counter would overflow.
+// Overflow requires 2^32 events within a single wall-millisecond — a stalled
+// physical clock under sustained load. Carrying preserves strict monotonicity;
+// wrapping to zero at the same wall time would violate it, silently, in the one
+// place the whole system's ordering rests.
+func bump(wall uint64, baseLogical uint32) Timestamp {
+	if baseLogical == math.MaxUint32 {
+		return Timestamp{WallMS: wall + 1, Logical: 0}
+	}
+	return Timestamp{WallMS: wall, Logical: baseLogical + 1}
 }
