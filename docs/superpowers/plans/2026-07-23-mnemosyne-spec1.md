@@ -7174,17 +7174,28 @@ func TestSchemaHasNotDrifted(t *testing.T) {
 		t.Fatalf("read golden (regenerate with: go test ./schema/ -update): %v", err)
 	}
 	if string(got) == string(want) {
-		return
+		return // fast path: bytes match, so the schema cannot have drifted
 	}
 
+	// Differing bytes do not by themselves mean the schema drifted. Protobuf's
+	// deterministic marshalling is guaranteed only within a single binary, so a
+	// protobuf-go upgrade can re-encode an unchanged descriptor. Structure
+	// decides the verdict; the byte comparison above is only a fast path. A
+	// guard that fails on library upgrades gets deleted.
 	var previous descriptorpb.FileDescriptorSet
 	if err := proto.Unmarshal(want, &previous); err != nil {
 		t.Fatalf("golden is corrupt: %v", err)
 	}
-	t.Fatalf("the frozen schema changed:\n%s\n\n"+
-		"The wire format is frozen. If this change is intentional and "+
-		"backward compatible, regenerate with: go test ./schema/ -update",
-		cmp.Diff(&previous, current, protocmp.Transform()))
+	if diff := cmp.Diff(&previous, current, protocmp.Transform()); diff != "" {
+		t.Fatalf("the frozen schema changed:
+%s
+
+"+
+			"The wire format is frozen. If this change is intentional and "+
+			"backward compatible, regenerate with: go test ./schema/ -update", diff)
+	}
+	t.Logf("golden bytes differ but the schema is structurally identical; " +
+		"regenerate with: go test ./schema/ -update")
 }
 
 // TestGoldenIsDeterministic guards the guard: a golden that is not byte-stable
