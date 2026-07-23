@@ -7060,6 +7060,250 @@ git commit -m "test: add Spec 1 end-to-end acceptance suite"
 
 ---
 
+---
+
+## Task 14: Schema drift guard
+
+> **Execution order:** run this immediately after Task 1. It is numbered 14 only because the plan's task numbers are stable identifiers, not an ordering.
+
+**Objective:** A committed golden descriptor fails the build the moment a `.proto` field number, enum value, or reserved range changes — so the frozen schema is enforced by a test rather than by reviewer attention.
+
+**Why this exists:** Task 1's round-trip test cannot catch this class of bug. Regenerating after a field-number change produces marshal *and* unmarshal code using the new numbers, so a self-consistent renumbering round-trips perfectly and the test still passes. The only thing that detects it is comparing the schema's descriptor against a recorded baseline. The design document declares this wire format frozen; nothing currently enforces that claim.
+
+**Deliverables:** `schema/testdata/descriptor.golden.binpb`, `schema/descriptor_test.go`, a `schema-golden` Makefile target.
+
+**Interfaces:**
+- Consumes: the generated bindings registered in `protoregistry.GlobalFiles` by importing `schema/gen/go/mnemosyne/v1`.
+- Produces: no exported Go API. A `-update` test flag regenerates the golden.
+
+**Invariants:**
+1. The golden is built from the descriptors embedded in the *generated Go code*, not by invoking `protoc`. The test must pass with no `protoc` on PATH and with `CGO_ENABLED=0`.
+2. Serialization is deterministic — the same schema always produces identical golden bytes, regardless of map iteration order.
+3. The four files are emitted in a stable, sorted order.
+4. A field-number change, an enum-value change, or a change to `EdgeType`'s reserved range fails the test.
+5. A comment-only or formatting-only `.proto` edit does **not** fail the test. `protodesc` omits source-code info, so this holds by construction — but it is asserted, because a guard that cries wolf gets deleted.
+6. On failure the test prints a readable structural diff, not a byte offset.
+
+**Tests:** The golden comparison itself, an assertion that regenerating twice is byte-stable, and a focused assertion naming the specific invariants the design calls out (`Event` field numbers, `EdgeType` reserving 5–15) so a failure says what broke.
+
+**Definition of done:** `CGO_ENABLED=0 go test ./schema/` passes; transposing two `HttpClient` field numbers, regenerating bindings, and re-running makes it **fail with a message naming the changed field** — verified and then reverted.
+
+**Risks:** The obvious failure mode is a guard that cannot actually fail. Task 1 shipped a mutation check that proved nothing because both sides of the round trip changed together; do not repeat that pattern. The mutation check below is the deliverable's real acceptance criterion, and it must be performed against the regenerated bindings. The second risk is a golden so noisy that unrelated protobuf-library upgrades break it — mitigated by comparing `FileDescriptorProto` structure, which is stable across generator versions, rather than raw `rawDesc` bytes.
+
+- [ ] **Step 1: Write the failing test**
+
+Create `schema/descriptor_test.go`:
+
+```go
+package schema_test
+
+import (
+	"flag"
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/google/go-cmp/cmp"
+	_ "github.com/ai-mond/mnemosyne/schema/gen/go/mnemosyne/v1"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protodesc"
+	"google.golang.org/protobuf/reflect/protoreflect"
+	"google.golang.org/protobuf/reflect/protoregistry"
+	"google.golang.org/protobuf/testing/protocmp"
+	"google.golang.org/protobuf/types/descriptorpb"
+)
+
+var update = flag.Bool("update", false, "rewrite the golden descriptor")
+
+const goldenPath = "testdata/descriptor.golden.binpb"
+
+// schemaFiles are the frozen files this guard covers.
+var schemaFiles = []string{
+	"mnemosyne/v1/common.proto",
+	"mnemosyne/v1/event.proto",
+	"mnemosyne/v1/gap.proto",
+	"mnemosyne/v1/ingest.proto",
+}
+
+// currentDescriptorSet builds a FileDescriptorSet from the descriptors embedded
+// in the generated Go code. protoc is deliberately not involved: this must pass
+// on a machine that has never installed it.
+//
+// protodesc omits source-code info, so comments and formatting do not
+// participate — only structure: field numbers, types, enum values, and
+// reserved ranges.
+func currentDescriptorSet(t *testing.T) *descriptorpb.FileDescriptorSet {
+	t.Helper()
+	set := &descriptorpb.FileDescriptorSet{}
+	for _, path := range schemaFiles { // fixed order, so output is stable
+		fd, err := protoregistry.GlobalFiles.FindFileByPath(path)
+		if err != nil {
+			t.Fatalf("descriptor for %s not registered: %v", path, err)
+		}
+		set.File = append(set.File, protodesc.ToFileDescriptorProto(fd))
+	}
+	return set
+}
+
+func marshalGolden(t *testing.T, set *descriptorpb.FileDescriptorSet) []byte {
+	t.Helper()
+	b, err := proto.MarshalOptions{Deterministic: true}.Marshal(set)
+	if err != nil {
+		t.Fatalf("marshal descriptor set: %v", err)
+	}
+	return b
+}
+
+func TestSchemaHasNotDrifted(t *testing.T) {
+	current := currentDescriptorSet(t)
+	got := marshalGolden(t, current)
+
+	if *update {
+		if err := os.MkdirAll(filepath.Dir(goldenPath), 0o755); err != nil {
+			t.Fatalf("create testdata dir: %v", err)
+		}
+		if err := os.WriteFile(goldenPath, got, 0o644); err != nil {
+			t.Fatalf("write golden: %v", err)
+		}
+		t.Logf("golden updated (%d bytes) — commit it only alongside an intentional schema change", len(got))
+		return
+	}
+
+	want, err := os.ReadFile(goldenPath)
+	if err != nil {
+		t.Fatalf("read golden (regenerate with: go test ./schema/ -update): %v", err)
+	}
+	if string(got) == string(want) {
+		return
+	}
+
+	var previous descriptorpb.FileDescriptorSet
+	if err := proto.Unmarshal(want, &previous); err != nil {
+		t.Fatalf("golden is corrupt: %v", err)
+	}
+	t.Fatalf("the frozen schema changed:\n%s\n\n"+
+		"The wire format is frozen. If this change is intentional and "+
+		"backward compatible, regenerate with: go test ./schema/ -update",
+		cmp.Diff(&previous, current, protocmp.Transform()))
+}
+
+// TestGoldenIsDeterministic guards the guard: a golden that is not byte-stable
+// would fail at random and be deleted within a week.
+func TestGoldenIsDeterministic(t *testing.T) {
+	first := marshalGolden(t, currentDescriptorSet(t))
+	for i := 0; i < 10; i++ {
+		if got := marshalGolden(t, currentDescriptorSet(t)); string(got) != string(first) {
+			t.Fatalf("iteration %d produced different bytes; the golden is not deterministic", i)
+		}
+	}
+}
+
+// TestFrozenInvariantsAreNamed asserts the specific guarantees the design
+// document calls out, so a failure says which promise broke rather than only
+// that some bytes differ.
+func TestFrozenInvariantsAreNamed(t *testing.T) {
+	fd, err := protoregistry.GlobalFiles.FindFileByPath("mnemosyne/v1/event.proto")
+	if err != nil {
+		t.Fatalf("event.proto not registered: %v", err)
+	}
+
+	t.Run("event field numbers", func(t *testing.T) {
+		msg := fd.Messages().ByName("Event")
+		if msg == nil {
+			t.Fatal("message Event not found")
+		}
+		want := map[string]protoreflect.FieldNumber{
+			"schema_version": 1, "trace_id": 2, "id": 3, "parent": 4, "span_id": 5,
+			"service": 6, "hlc": 7, "wall_unix_nanos": 8, "duration_nanos": 9,
+			"phase": 10, "operation_type": 11, "http_server": 12, "http_client": 13,
+			"status": 14, "error": 15, "links": 16, "request": 17, "response": 18,
+			"completeness": 19, "attributes": 20, "attributes_truncated": 21,
+		}
+		for name, num := range want {
+			f := msg.Fields().ByName(protoreflect.Name(name))
+			if f == nil {
+				t.Errorf("Event.%s is missing from the frozen schema", name)
+				continue
+			}
+			if f.Number() != num {
+				t.Errorf("Event.%s has field number %d, frozen at %d", name, f.Number(), num)
+			}
+		}
+	})
+
+	t.Run("edge type reserves 5 to 15", func(t *testing.T) {
+		enum := fd.Enums().ByName("EdgeType")
+		if enum == nil {
+			t.Fatal("enum EdgeType not found")
+		}
+		for v := int32(5); v <= 15; v++ {
+			if got := enum.Values().ByNumber(protoreflect.EnumNumber(v)); got != nil {
+				t.Errorf("EdgeType %d is reserved for future graph relationships but is named %q", v, got.Name())
+			}
+		}
+	})
+}
+```
+
+- [ ] **Step 2: Run to verify it fails**
+
+Run: `go test ./schema/ -run TestSchemaHasNotDrifted`
+Expected: FAIL — `read golden (regenerate with: go test ./schema/ -update)`, because `testdata/descriptor.golden.binpb` does not exist yet.
+
+- [ ] **Step 3: Generate the golden**
+
+```bash
+go test ./schema/ -update
+```
+
+Expected: PASS, and `schema/testdata/descriptor.golden.binpb` now exists.
+
+- [ ] **Step 4: Run the full schema suite**
+
+Run: `CGO_ENABLED=0 go test ./schema/ -v`
+Expected: PASS — `TestSchemaHasNotDrifted`, `TestGoldenIsDeterministic`, `TestFrozenInvariantsAreNamed` and its two subtests, plus Task 1's round-trip tests. Output pristine.
+
+- [ ] **Step 5: Prove the guard actually fires**
+
+This step is the deliverable's real acceptance criterion. A guard that cannot fail is worse than none, because it manufactures confidence.
+
+1. Edit `schema/proto/mnemosyne/v1/event.proto` and swap two `HttpClient` field numbers: make `host = 3` and `path = 2`.
+2. Regenerate the bindings with the project's protoc invocation.
+3. Run `go test ./schema/ -run TestSchemaHasNotDrifted`.
+
+Expected: **FAIL**, with a diff naming `host` and `path` and their changed numbers. Capture that output — it is the evidence this task exists to produce.
+
+4. Revert the `.proto` change, regenerate again, and confirm the suite passes.
+5. Run `git status` and `git diff` and confirm no `.proto` or `.pb.go` file is left modified.
+
+- [ ] **Step 6: Prove the guard does not cry wolf**
+
+1. Add a comment line to `schema/proto/mnemosyne/v1/gap.proto`.
+2. Regenerate.
+3. Run `go test ./schema/`.
+
+Expected: **PASS** — `protodesc` omits source-code info, so comments are invisible to the guard. A guard that fired on comment edits would be disabled by the first person it annoyed.
+
+4. Revert the comment and regenerate. Confirm `git status` is clean of `.proto`/`.pb.go` changes.
+
+- [ ] **Step 7: Add the Makefile target**
+
+Add to `Makefile`:
+
+```make
+schema-golden:
+	go test ./schema/ -update
+```
+
+and add `schema-golden` to the `.PHONY` list.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add schema/descriptor_test.go schema/testdata/descriptor.golden.binpb Makefile go.mod go.sum
+git commit -m "test(schema): guard frozen wire format with a golden descriptor"
+```
+
 ## Spec coverage
 
 Mapping from the frozen design to the task that implements it, so gaps are visible:
@@ -7067,6 +7311,7 @@ Mapping from the frozen design to the task that implements it, so gaps are visib
 | Spec section | Task |
 |---|---|
 | Recording schema, versioning invariant | 1 |
+| Schema drift guard (golden descriptor) | 14 |
 | Ordering and clocks, skew detection | 2, 10 |
 | Identity, foreign identity rule | 3, 6 |
 | Causal model, scope invariant, DAG edges | 4, 9 |
