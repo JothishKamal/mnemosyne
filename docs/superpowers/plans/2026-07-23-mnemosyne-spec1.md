@@ -20,6 +20,8 @@
 - **Redaction happens before the ring buffer.** Unredacted payloads must never reach the exporter.
 - **The SDK never blocks the application and never grows unbounded.** Recording is what gets sacrificed.
 - **Commit after every task.** No `Co-Authored-By` trailers.
+- **Conventional Commits are mandatory** for every commit: `type(scope): subject`, imperative mood, lowercase subject, no trailing period. Types in use: `feat`, `fix`, `test`, `chore`, `docs`, `refactor`. Each task's commit step gives the exact message to use — use it verbatim.
+- **One branch per task**, named `task-NN-<slug>`, developed in its own git worktree and merged to `main` only via a reviewed pull request. Never commit directly to `main`.
 
 ## Deviations from the frozen spec
 
@@ -164,7 +166,7 @@ Expected: `mnemodev 0.0.1-dev`, exit 0.
 
 ```bash
 git add go.mod Makefile cmd/
-git commit -m "Scaffold module and mnemodev developer harness"
+git commit -m "chore: scaffold module and mnemodev developer harness"
 ```
 
 ---
@@ -521,7 +523,7 @@ Expected: indented JSON containing `"serviceName"`-style camelCase fields and `"
 
 ```bash
 git add schema/ cmd/ Makefile
-git commit -m "Add frozen v1 protobuf schema and event JSON printing"
+git commit -m "feat(schema): add frozen v1 protobuf schema and event JSON printing"
 ```
 
 ---
@@ -816,7 +818,7 @@ Expected: PASS with `[rapid] OK, passed 1000 tests`.
 
 ```bash
 git add sdk/hlc/ go.mod go.sum
-git commit -m "Add hybrid logical clock with happens-before property test"
+git commit -m "feat(sdk): add hybrid logical clock with happens-before property test"
 ```
 
 ---
@@ -1246,7 +1248,7 @@ Expected: PASS — all tests, including the round-trip property test at 1000 che
 
 ```bash
 git add sdk/identity/
-git commit -m "Add SDK-owned identity generation and W3C propagation codec"
+git commit -m "feat(sdk): add identity generation and W3C propagation codec"
 ```
 
 ---
@@ -1631,7 +1633,7 @@ func TestForeignRemoteParentBecomesLinkNotParent(t *testing.T) {
 	h.End()
 
 	e := sink.ends()[0]
-	if !e.Parent.GetSequence() == false && e.Parent != nil && e.Parent.Sequence != 0 {
+	if e.Parent != nil && e.Parent.Sequence != 0 {
 		t.Fatalf("foreign remote set a parent: %v", e.Parent)
 	}
 	if len(e.Links) != 1 || e.Links[0].Type != v1.EdgeType_REMOTE_CALL {
@@ -1971,15 +1973,7 @@ func errorType(err error) string {
 }
 ```
 
-- [ ] **Step 9: Fix the foreign-parent assertion and run the suite**
-
-The assertion in `TestForeignRemoteParentBecomesLinkNotParent` from Step 6 is written awkwardly. Replace that assertion block with:
-
-```go
-	if e.Parent != nil && e.Parent.Sequence != 0 {
-		t.Fatalf("foreign remote set a parent: %v", e.Parent)
-	}
-```
+- [ ] **Step 9: Run the suite**
 
 Run: `go test ./sdk/... -race -v`
 Expected: PASS — all recorder and mnemoctx tests.
@@ -2079,7 +2073,7 @@ Expected: PASS with `[rapid] OK, passed 1000 tests`.
 
 ```bash
 git add sdk/
-git commit -m "Add Recorder, Handle, and mnemoctx with scope invariant property test"
+git commit -m "feat(sdk): add Recorder, Handle, and mnemoctx with scope invariant"
 ```
 
 ---
@@ -2094,7 +2088,7 @@ git commit -m "Add Recorder, Handle, and mnemoctx with scope invariant property 
 - Consumes: `identity.TraceID`, `identity.EventID`, `v1.PayloadRef`.
 - Produces:
   - `capture.Level` (`LevelOff`, `LevelMetadata`, `LevelFull`)
-  - `capture.Policy{Default Level; Routes map[string]Level; MaxBytesPerTrace int; MaxTraces int; MaxPayloadBytes int; Redact Redact}`
+  - `capture.Policy{Default Level; MaxBytesPerTrace int; MaxTraces int; MaxPayloadBytes int; Redact Redact}` — per-route resolution is on the deferred list and is added with the code that consumes it
   - `capture.Redact{Headers []string; JSONKeys []string}`, `(Redact).Body([]byte) ([]byte, bool)`, `(Redact).HeaderValue(name, value string) (string, bool)`
   - `capture.NewEngine(Policy) *Engine`
   - `(*Engine).Record(tr identity.TraceID, ev identity.EventID, kind Kind, body []byte) *v1.PayloadRef`
@@ -2478,11 +2472,10 @@ const (
 
 // Policy configures the engine.
 //
-// Spec 1 resolves only Default and Routes; SQL, cache-key, and topic matchers
-// are part of the config grammar but have no operations to match yet.
+// Spec 1 resolves Default only. Route, SQL, cache-key, and topic matchers are
+// part of the config grammar but are added with the code that consumes them.
 type Policy struct {
 	Default          Level
-	Routes           map[string]Level
 	MaxBytesPerTrace int
 	MaxTraces        int
 	MaxPayloadBytes  int
@@ -2524,14 +2517,6 @@ func NewEngine(p Policy) *Engine {
 		p.MaxPayloadBytes = 64 << 10 // 64 KiB
 	}
 	return &Engine{policy: p, rings: map[identity.TraceID]*ring{}}
-}
-
-// LevelFor resolves the capture level for a route.
-func (e *Engine) LevelFor(route string) Level {
-	if l, ok := e.policy.Routes[route]; ok {
-		return l
-	}
-	return e.policy.Default
 }
 
 // Record computes a PayloadRef for body and, at LevelFull, buffers the redacted
@@ -2769,7 +2754,7 @@ Expected: PASS — every package.
 
 ```bash
 git add sdk/
-git commit -m "Add capture engine with bounded rings, pre-buffer redaction, and retroactive flush"
+git commit -m "feat(sdk): add capture engine with bounded rings and retroactive flush"
 ```
 
 ---
@@ -3337,7 +3322,7 @@ Expected: a stream of JSON events sharing one `traceId`, with a `REMOTE_CALL` li
 
 ```bash
 git add sdk/ cmd/
-git commit -m "Add HTTP instrumentation with W3C propagation and backward capture flag"
+git commit -m "feat(sdk): add HTTP instrumentation with W3C propagation"
 ```
 
 ---
@@ -3895,7 +3880,7 @@ Expected: PASS — all seven conformance subtests.
 
 ```bash
 git add store/
-git commit -m "Add EventStore and BlobStore interfaces with in-memory backends and conformance suite"
+git commit -m "feat(store): add EventStore and BlobStore with in-memory backends"
 ```
 
 ---
@@ -4600,7 +4585,7 @@ Expected: `ok`. Stop the collector with Ctrl-C.
 
 ```bash
 git add sdk/exporter/ collector/ cmd/mnemo/
-git commit -m "Add batching exporter with gap records and collector ingest"
+git commit -m "feat(collector): add batching exporter with gap records and ingest"
 ```
 
 ---
@@ -4831,8 +4816,9 @@ func (c *Ctx) CallWithRetries(service, path string, attempts int) error {
 // Hang opens an operation that never completes, producing an unmatched BEGIN.
 // It is released when the harness closes, so it cannot leak a goroutine.
 func (c *Ctx) Hang() {
-	h := c.svc.Rec.Begin(c.r.Context(), sdk.Local{Name: "hung-operation"})
-	_ = h // deliberately never ended: this is what a deadlock looks like
+	// Opened and never ended on purpose: an unmatched BEGIN is exactly what a
+	// deadlocked or hung operation looks like in a real recording.
+	_ = c.svc.Rec.Begin(c.r.Context(), sdk.Local{Name: "hung-operation"})
 	<-c.h.release
 }
 
@@ -5080,7 +5066,7 @@ Expected: PASS. If it hangs, `Hang()` is not being released by `Close()` — fix
 
 ```bash
 git add sdk/link.go harness/
-git commit -m "Add deterministic incident harness with virtual clocks and the acceptance scenario"
+git commit -m "test(harness): add deterministic incident harness and acceptance scenario"
 ```
 
 ---
@@ -5212,7 +5198,6 @@ import (
 
 	v1 "github.com/jothishkamal/mnemosyne/schema/gen/go/mnemosyne/v1"
 	"github.com/jothishkamal/mnemosyne/replay"
-	"github.com/jothishkamal/mnemosyne/store"
 	"github.com/jothishkamal/mnemosyne/store/memory"
 )
 
@@ -5378,7 +5363,6 @@ func TestChainIsBoundedAndMarksTruncation(t *testing.T) {
 	}
 }
 
-var _ store.EventStore = memory.NewEvents()
 ```
 
 - [ ] **Step 3: Run to verify failure**
@@ -5809,7 +5793,7 @@ Expected: PASS across all packages.
 
 ```bash
 git add replay/ collector/
-git commit -m "Add replay engine with bounded bucketing, in-flight detection, and query API"
+git commit -m "feat(replay): add replay engine with bounded bucketing and query API"
 ```
 
 ---
@@ -6234,7 +6218,7 @@ Expected on screen: three lanes, an error band on `pricing-svc`, a `never ended`
 
 ```bash
 git add ui/ collector/ cmd/
-git commit -m "Add split-view replay UI with in-flight, gap, and skew rendering"
+git commit -m "feat(ui): add split-view replay UI with in-flight, gap, and skew states"
 ```
 
 ---
@@ -6298,22 +6282,6 @@ func TestDurableConformance(t *testing.T) {
 			return s
 		},
 	)
-}
-
-func TestEventsSurviveReopen(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "events.db")
-	s, err := sqlite.Open(path)
-	if err != nil {
-		t.Fatalf("open: %v", err)
-	}
-	// Reuse the conformance suite's fixture shape via a direct append.
-	if err := s.Close(); err != nil {
-		t.Fatalf("close: %v", err)
-	}
-	if s, err = sqlite.Open(path); err != nil {
-		t.Fatalf("reopen: %v", err)
-	}
-	defer s.Close()
 }
 ```
 
@@ -6753,7 +6721,7 @@ Expected: the same replay renders after the restart.
 
 ```bash
 git add store/ cmd/mnemo/
-git commit -m "Add SQLite and filesystem storage backends passing the shared conformance suite"
+git commit -m "feat(store): add SQLite and filesystem backends passing conformance"
 ```
 
 ---
@@ -6785,7 +6753,6 @@ import (
 	"context"
 	"path/filepath"
 	"testing"
-	"time"
 
 	v1 "github.com/jothishkamal/mnemosyne/schema/gen/go/mnemosyne/v1"
 	"github.com/jothishkamal/mnemosyne/harness"
@@ -7038,7 +7005,6 @@ func TestRecordingSurvivesRestart(t *testing.T) {
 	if len(got) == 0 {
 		t.Fatal("recording did not survive a restart")
 	}
-	_ = time.Now // keep the time import honest if the test is trimmed
 }
 ```
 
@@ -7060,7 +7026,7 @@ Run the collector with SQLite, record the scenario, open the UI. Confirm the fou
 
 ```bash
 git add acceptance/
-git commit -m "Add Spec 1 end-to-end acceptance suite"
+git commit -m "test: add Spec 1 end-to-end acceptance suite"
 ```
 
 ---
