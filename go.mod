@@ -9,4 +9,4 @@ require (
 	google.golang.org/protobuf v1.36.11
 )
 
-require pgregory.net/rapid v1.3.0 // indirect
+require pgregory.net/rapid v1.3.0
