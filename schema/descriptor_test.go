@@ -80,10 +80,19 @@ func TestSchemaHasNotDrifted(t *testing.T) {
 		return
 	}
 
+	// Bytes differ; check if the structure is identical. A protobuf library
+	// upgrade could re-encode a semantically unchanged descriptor into different
+	// bytes. If the structure matches, the golden can be regenerated and the
+	// test passes. Only fail if the structure actually diverged.
 	var previous descriptorpb.FileDescriptorSet
 	if err := proto.Unmarshal(want, &previous); err != nil {
 		t.Fatalf("golden is corrupt: %v", err)
 	}
+	if diff := cmp.Diff(&previous, current, protocmp.Transform()); diff == "" {
+		t.Logf("bytes differ but schema structure is identical; regenerate with: go test ./schema/ -update")
+		return
+	}
+
 	t.Fatalf("the frozen schema changed:\n%s\n\n"+
 		"The wire format is frozen. If this change is intentional and "+
 		"backward compatible, regenerate with: go test ./schema/ -update",
