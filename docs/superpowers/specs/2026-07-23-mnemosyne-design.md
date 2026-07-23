@@ -1,6 +1,8 @@
 # Mnemosyne — Memory for Distributed Systems
 
-**Design spec · 2026-07-23 · v1 (walking skeleton)**
+**Design spec · 2026-07-23 · v1 (walking skeleton) · Status: ACCEPTED — design frozen**
+
+From this point: implementation bugs are fixed immediately; invariants discovered during coding amend this spec; anything else becomes a future spec.
 
 ---
 
@@ -254,6 +256,12 @@ message Gap {
 
 `Gap` is a first-class record in the ingest stream, not an `Event` — it describes the *absence* of events and so cannot carry an `EventID`, a parent, or a phase. The `EventStore` indexes gaps by `(emitter_id, hlc window)` so the replay engine can attribute them to a time range even when no trace is known.
 
+### Versioning invariant
+
+> **Replay engines may consume older schema versions. An SDK never emits multiple schema versions concurrently.**
+
+A single process emits exactly one `schema_version` for its entire lifetime. Version heterogeneity exists across a fleet during rollout, never within one emitter — which means the replay engine's compatibility surface is per-event, and an emitter's stream is never internally mixed.
+
 ### Identity
 
 The SDK owns identity generation. No adapter ever mints an ID.
@@ -286,6 +294,8 @@ The SDK owns identity generation. No adapter ever mints an ID.
 Without this, an operation that never ends is never recorded — and during an incident, the single most important event (the deadlocked query, the hung RPC, the request killed by OOM) would be invisible, with the timeline going silent exactly where the answer is. **An unmatched `BEGIN` renders as "in flight, never completed."**
 
 Cost is 2× event volume for durational operations, mitigated by eliding `BEGIN` from the outgoing batch when `END` lands in the same flush window. Fast operations collapse back to one record; only operations that outlive a flush pay double — which are precisely the ones worth paying for.
+
+**BEGIN elision is an exporter optimization and must be observationally equivalent to transmitting both records.** The schema, the store, and the replay engine all behave as though `BEGIN` and `END` always exist. An exporter is permitted to compress them; it is not permitted to change what replay observes. This keeps replay semantics independent of batching strategy, so the flush-window policy can be retuned freely without touching the protocol.
 
 ### Completeness
 
@@ -390,6 +400,8 @@ v1 propagates the trigger **backward along the response path**: a triggered resp
 
 **It does not work across Kafka**, where there is no response path. Those traces require collector-initiated retro-fetch over a control channel to the SDK. Deferred to V2 and documented as a v1 limitation rather than papered over.
 
+**Backward trigger propagation is best-effort. A trace may contain a mix of flushed and metadata-only payloads when the triggering event crosses an asynchronous boundary.** The replay engine must expect partial payload coverage within a single trace and render it as such — per-event `completeness`, not a trace-level assumption.
+
 ### Backpressure
 
 The collector acks each batch with a shed hint; the SDK drops lowest-value events first. One absolute invariant: **the SDK never blocks the application thread and never grows unbounded.** Recording is always what gets sacrificed.
@@ -438,7 +450,9 @@ Bucketing is the reason the engine is server-side. An incident with 1,200 Redis 
 | `GET /api/chain?event_id` | Recorded causal chain |
 | `GET /api/traces?from&to&service&status` | Trace search |
 | `GET /api/event/{id}` | Raw event, attributes, HLC (debug pane) |
-| `GET /api/blob/{sha256}` | Payload |
+| `GET /api/blob/{blob_id}` | Payload |
+
+`blob_id` is an **opaque logical handle** minted by the collector and surfaced through the query API. `sha256` remains content metadata — it drives deduplication, the `HasBlobs` upload check, and the "payload identical to request #1842" claim — but it is not the public address. This decouples the API from storage layout, so encryption, compression, sharding, or a hash-algorithm migration never breaks a client. In v1 the collector implements `blob_id` as the sha256 hex string; the contract is that clients must not rely on that.
 
 ---
 
