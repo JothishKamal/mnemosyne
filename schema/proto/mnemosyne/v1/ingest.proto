@@ -1,0 +1,16 @@
+syntax = "proto3";
+package mnemosyne.v1;
+option go_package = "github.com/ai-mond/mnemosyne/schema/gen/go/mnemosyne/v1;mnemosynev1";
+
+import "mnemosyne/v1/event.proto";
+import "mnemosyne/v1/gap.proto";
+
+message Batch {
+  repeated Event events = 1;
+  repeated Gap   gaps   = 2;
+}
+
+message BatchAck {
+  uint32 accepted   = 1;
+  bool   shed       = 2;  // caller should reduce volume
+}
