@@ -1,0 +1,8 @@
+# The descriptor golden is compared byte-for-byte. It contains CR and LF bytes
+# that end-of-line conversion would corrupt, and it is protected today only by
+# git's NUL-byte binary heuristic — which depends on schema content. Pin it.
+*.binpb binary
+
+# Generated protobuf bindings are emitted with LF. Pinning this stops git
+# reporting them as perpetually modified under core.autocrlf.
+*.pb.go text eol=lf
