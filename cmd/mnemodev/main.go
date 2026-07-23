@@ -16,13 +16,19 @@ func versionString() string {
 
 func main() {
 	showVersion := flag.Bool("version", false, "print version and exit")
+	demoEvent := flag.Bool("demo-event", false, "print a fully-populated demo event as JSON")
 	flag.Parse()
 
-	if *showVersion {
+	switch {
+	case *showVersion:
 		fmt.Println(versionString())
-		os.Exit(0)
+	case *demoEvent:
+		if err := PrintEvent(os.Stdout, demo()); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+	default:
+		fmt.Fprintln(os.Stderr, "no input: pass -version or -demo-event")
+		os.Exit(2)
 	}
-
-	fmt.Fprintln(os.Stderr, "no input: pass -version (event printing lands in Task 1)")
-	os.Exit(2)
 }
