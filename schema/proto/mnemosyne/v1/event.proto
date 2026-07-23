@@ -1,0 +1,90 @@
+syntax = "proto3";
+package mnemosyne.v1;
+option go_package = "github.com/jothishkamal/mnemosyne/schema/gen/go/mnemosyne/v1;mnemosynev1";
+
+import "mnemosyne/v1/common.proto";
+
+enum Phase        { PHASE_UNSPECIFIED = 0; BEGIN = 1; END = 2; INSTANT = 3; }
+enum Status       { STATUS_UNSPECIFIED = 0; OK = 1; ERROR = 2; TIMEOUT = 3; CANCELED = 4; }
+enum Completeness { COMPLETENESS_UNSPECIFIED = 0; FULL = 1; TRUNCATED = 2; METADATA_ONLY = 3; }
+
+enum OperationType {
+  OPERATION_TYPE_UNSPECIFIED = 0;
+  HTTP_SERVER = 1;
+  HTTP_CLIENT = 2;
+  LOCAL       = 3;
+  DB_QUERY    = 10;
+  CACHE_OP    = 20;
+  MSG_PRODUCE = 30;
+  MSG_CONSUME = 31;
+}
+
+enum EdgeType {
+  EDGE_TYPE_UNSPECIFIED = 0;
+  PARENT      = 1;
+  REMOTE_CALL = 2;
+  MSG_FLOW    = 3;
+  RETRY_OF    = 4;
+  reserved 5 to 15;
+}
+
+message PayloadRef {
+  bytes  sha256    = 1;
+  uint64 size      = 2;
+  bool   truncated = 3;
+  bool   redacted  = 4;
+  bool   stored    = 5;
+}
+
+message Link {
+  EdgeType type            = 1;
+  bytes    trace_id        = 2;
+  EventID  event           = 3;
+  bytes    foreign_span_id = 4;
+}
+
+message HttpServer {
+  string method = 1;
+  string route  = 2;
+  string path   = 3;
+  uint32 status = 4;
+}
+
+message HttpClient {
+  string method = 1;
+  string host   = 2;
+  string path   = 3;
+  uint32 status = 4;
+}
+
+message Event {
+  uint32 schema_version = 1;
+
+  bytes   trace_id = 2;
+  EventID id       = 3;
+  EventID parent   = 4;
+  bytes   span_id  = 5;
+
+  Service service         = 6;
+  HLC     hlc             = 7;
+  int64   wall_unix_nanos = 8;
+  int64   duration_nanos  = 9;
+
+  Phase         phase          = 10;
+  OperationType operation_type = 11;
+  oneof operation {
+    HttpServer http_server = 12;
+    HttpClient http_client = 13;
+  }
+
+  Status    status = 14;
+  ErrorInfo error  = 15;
+
+  repeated Link links        = 16;
+  PayloadRef   request       = 17;
+  PayloadRef   response      = 18;
+  Completeness completeness  = 19;
+
+  map<string, Value> attributes = 20;
+  bool attributes_truncated     = 21;
+}

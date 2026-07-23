@@ -1,0 +1,22 @@
+syntax = "proto3";
+package mnemosyne.v1;
+option go_package = "github.com/jothishkamal/mnemosyne/schema/gen/go/mnemosyne/v1;mnemosynev1";
+
+import "mnemosyne/v1/common.proto";
+
+enum GapReason {
+  GAP_REASON_UNSPECIFIED = 0;
+  BACKPRESSURE  = 1;
+  RING_EVICTION = 2;
+  UNREACHABLE   = 3;
+  ATTR_OVERFLOW = 4;
+}
+
+message Gap {
+  bytes     emitter_id    = 1;
+  HLC       from          = 2;
+  HLC       to            = 3;
+  uint64    dropped_count = 4;
+  GapReason reason        = 5;
+  bytes     trace_id      = 6;
+}

@@ -426,25 +426,52 @@ func fullEvent() *v1.Event {
 	}
 }
 
+// httpClientEvent reaches the oneof branches fullEvent cannot. A oneof holds
+// exactly one variant, so a single fixture can never exercise HttpClient or
+// the non-string Value kinds - a transposed field number in either would
+// round-trip silently, defeating the point of this test.
+func httpClientEvent() *v1.Event {
+	e := fullEvent()
+	e.OperationType = v1.OperationType_HTTP_CLIENT
+	e.Operation = &v1.Event_HttpClient{HttpClient: &v1.HttpClient{
+		Method: "GET", Host: "inventory-svc:8080", Path: "/stock", Status: 503,
+	}}
+	e.Attributes = map[string]*v1.Value{
+		"retry.attempt":   {Kind: &v1.Value_IntValue{IntValue: 3}},
+		"latency.seconds": {Kind: &v1.Value_DoubleValue{DoubleValue: 1.75}},
+		"cache.hit":       {Kind: &v1.Value_BoolValue{BoolValue: true}},
+	}
+	return e
+}
+
 func TestEventRoundTrip(t *testing.T) {
-	in := fullEvent()
-	b, err := proto.Marshal(in)
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
+	cases := map[string]*v1.Event{
+		"http_server_with_string_attribute":  fullEvent(),
+		"http_client_with_scalar_attributes": httpClientEvent(),
 	}
-	var out v1.Event
-	if err := proto.Unmarshal(b, &out); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if !proto.Equal(in, &out) {
-		t.Fatalf("round-trip mismatch:\n in: %v\nout: %v", in, &out)
+	for name, in := range cases {
+		t.Run(name, func(t *testing.T) {
+			b, err := proto.Marshal(in)
+			if err != nil {
+				t.Fatalf("marshal: %v", err)
+			}
+			var out v1.Event
+			if err := proto.Unmarshal(b, &out); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+			if !proto.Equal(in, &out) {
+				t.Fatalf("round-trip mismatch:\n in: %v\nout: %v", in, &out)
+			}
+		})
 	}
 }
 
 func TestEdgeTypeReservesFutureRange(t *testing.T) {
-	// FORKS_TO and friends occupy 5..15; nothing may claim them.
-	if v1.EdgeType_name[5] != "" {
-		t.Fatalf("edge type 5 is reserved but named %q", v1.EdgeType_name[5])
+	// FORKS_TO and friends occupy 5..15; nothing may claim any of them.
+	for v := int32(5); v <= 15; v++ {
+		if name, ok := v1.EdgeType_name[v]; ok && name != "" {
+			t.Fatalf("edge type %d is reserved but named %q", v, name)
+		}
 	}
 }
 ```
