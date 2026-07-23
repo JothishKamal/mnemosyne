@@ -59,7 +59,7 @@ Both are slice decisions, not design changes. Flagged here so they are visible r
 
 **Objective:** A runnable `mnemodev` binary and a green `go test ./...` exist before any domain code.
 
-**Deliverables:** `go.mod`, `Makefile`, `cmd/mnemodev/main.go`, `tools.go`, `.gitignore` additions.
+**Deliverables:** `go.mod` (including a pinned `tool` directive for `protoc-gen-go`), `Makefile`, `cmd/mnemodev/main.go`, `.gitignore` additions.
 
 **Invariants:** `go build ./...` and `go test ./...` succeed with `CGO_ENABLED=0`.
 
@@ -71,11 +71,13 @@ Both are slice decisions, not design changes. Flagged here so they are visible r
 
 ```bash
 go mod init github.com/jothishkamal/mnemosyne
-go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
-protoc-gen-go --version
+go get -tool google.golang.org/protobuf/cmd/protoc-gen-go@latest
+go tool protoc-gen-go --version
 ```
 
-Expected: `protoc-gen-go v1.36.x` or later.
+Expected: `protoc-gen-go v1.36.x` or later, and a `tool` directive in `go.mod`.
+
+Go 1.24 tracks executable dependencies with `tool` directives rather than the pre-1.24 `tools.go` blank-import idiom. This pins the generator's version in `go.mod` and `go.sum`, so every contributor and CI run generates identical bindings — which matters because `schema/gen/go` is committed.
 
 - [ ] **Step 2: Write the failing test**
 
