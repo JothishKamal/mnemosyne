@@ -64,11 +64,11 @@ func TestTraceparentRoundTrip(t *testing.T) {
 func TestParseTraceparentRejectsMalformed(t *testing.T) {
 	cases := []string{
 		"",
-		"00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331", // missing flags
+		"00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331",     // missing flags
 		"00-0af7651916cd43dd8448eb211c80319c-00000000000000000-01", // span too long
-		"00-00000000000000000000000000000000-b7ad6b7169203331-01", // all-zero trace id
-		"00-0af7651916cd43dd8448eb211c80319c-0000000000000000-01", // all-zero span id
-		"zz-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01", // bad version
+		"00-00000000000000000000000000000000-b7ad6b7169203331-01",  // all-zero trace id
+		"00-0af7651916cd43dd8448eb211c80319c-0000000000000000-01",  // all-zero span id
+		"zz-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",  // bad version
 	}
 	for _, in := range cases {
 		if _, _, ok := identity.ParseTraceparent(in); ok {

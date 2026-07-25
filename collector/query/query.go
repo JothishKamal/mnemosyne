@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"strconv"
 
-	v1 "github.com/jothishkamal/mnemosyne/schema/gen/go/mnemosyne/v1"
 	"github.com/jothishkamal/mnemosyne/replay"
+	v1 "github.com/jothishkamal/mnemosyne/schema/gen/go/mnemosyne/v1"
 	"github.com/jothishkamal/mnemosyne/store"
 )
 

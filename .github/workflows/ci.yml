@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.0"
+          cache: true
+      - run: CGO_ENABLED=0 go build ./...
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.0"
+          cache: true
+      - run: CGO_ENABLED=0 go test ./... -count=1
+
+  race:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.0"
+          cache: true
+      # -race requires cgo, which needs a real C toolchain. The dev machine is
+      # windows/386, where -race is unsupported at all, so locally this is run
+      # as `GOARCH=amd64 CGO_ENABLED=1 go test -race`. On this linux/amd64
+      # runner cgo is already the default, so the plain command below is the
+      # correct equivalent — do not "simplify" it to match the local one.
+      - run: go test ./... -race -count=1
+
+  vet:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.0"
+          cache: true
+      - run: go vet ./...
+
+  gofmt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.0"
+          cache: true
+      - name: Check formatting
+        run: |
+          files=$(gofmt -l .)
+          if [ -n "$files" ]; then
+            echo "The following files are not gofmt'd:"
+            echo "$files"
+            exit 1
+          fi

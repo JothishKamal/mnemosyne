@@ -111,7 +111,7 @@ func TestDropsBecomeGapRecords(t *testing.T) {
 
 func TestUnreachableCollectorProducesGapsAndKeepsRunning(t *testing.T) {
 	ex := exporter.New(exporter.Config{
-		Endpoint: "http://127.0.0.1:1", // nothing listens here
+		Endpoint:  "http://127.0.0.1:1", // nothing listens here
 		QueueSize: 16, BatchSize: 4, FlushInterval: 5 * time.Millisecond,
 		EmitterID: [8]byte{3},
 	})
