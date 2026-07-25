@@ -9,6 +9,7 @@ import (
 	"time"
 
 	v1 "github.com/jothishkamal/mnemosyne/schema/gen/go/mnemosyne/v1"
+	"github.com/jothishkamal/mnemosyne/sdk/capture"
 	"github.com/jothishkamal/mnemosyne/sdk/hlc"
 	"github.com/jothishkamal/mnemosyne/sdk/identity"
 	"github.com/jothishkamal/mnemosyne/sdk/mnemoctx"
@@ -31,6 +32,10 @@ type Config struct {
 	Enabled bool
 	// Now supplies physical time. Nil uses time.Now.
 	Now func() time.Time
+	// Capture buffers full payloads for retroactive flush. Nil means
+	// metadata-only recording: PayloadRefs are still computed, but no bytes
+	// are ever buffered.
+	Capture *capture.Engine
 }
 
 // Recorder constructs and emits events. It is safe for concurrent use.
@@ -41,6 +46,7 @@ type Recorder struct {
 	sink    Sink
 	now     func() time.Time
 	enabled bool
+	cap     *capture.Engine
 }
 
 // Remote describes trace context received from another process.
@@ -68,14 +74,16 @@ func New(cfg Config) (*Recorder, error) {
 		return nil, err
 	}
 	em := gen.Emitter()
-	return &Recorder{
+	r := &Recorder{
 		svc:     &v1.Service{Name: cfg.Service, Version: cfg.Version, EmitterId: em[:]},
 		gen:     gen,
 		clk:     hlc.New(cfg.Now),
 		sink:    cfg.Sink,
 		now:     cfg.Now,
 		enabled: cfg.Enabled,
-	}, nil
+	}
+	r.cap = cfg.Capture
+	return r, nil
 }
 
 // Begin opens an operation. The returned Handle carries the child context; the
@@ -93,6 +101,15 @@ func (r *Recorder) Begin(ctx context.Context, op Operation) *Handle {
 // process.
 func (r *Recorder) BeginRemote(ctx context.Context, rem Remote, op Operation) *Handle {
 	return r.begin(ctx, op, &rem)
+}
+
+// FlushTrace returns the buffered payloads for a trace, for the exporter to
+// upload. Called when a trigger fires.
+func (r *Recorder) FlushTrace(tr identity.TraceID) []capture.Blob {
+	if r.cap == nil {
+		return nil
+	}
+	return r.cap.Flush(tr)
 }
 
 // Instant records an operation with no meaningful duration.
@@ -217,6 +234,8 @@ type Handle struct {
 	span    identity.SpanID
 	hasSpan bool
 	ended   bool
+
+	reqRef, respRef *v1.PayloadRef
 }
 
 // Context returns the context for work nested inside this operation.
@@ -295,6 +314,22 @@ func (h *Handle) SetOperation(op Operation) {
 	h.op = op
 }
 
+// RecordRequest records the request payload for this operation.
+func (h *Handle) RecordRequest(body []byte) {
+	if h == nil || h.rec == nil || h.rec.cap == nil {
+		return
+	}
+	h.reqRef = h.rec.cap.Record(h.scope.TraceID, h.id, capture.KindRequest, body)
+}
+
+// RecordResponse records the response payload for this operation.
+func (h *Handle) RecordResponse(body []byte) {
+	if h == nil || h.rec == nil || h.rec.cap == nil {
+		return
+	}
+	h.respRef = h.rec.cap.Record(h.scope.TraceID, h.id, capture.KindResponse, body)
+}
+
 // End closes the operation and emits its END event. It is idempotent.
 func (h *Handle) End() {
 	if h == nil || h.ended || h.rec == nil {
@@ -312,6 +347,18 @@ func (h *Handle) End() {
 	if h.err != nil {
 		e.Error = &v1.ErrorInfo{Type: errorType(h.err), Message: h.err.Error()}
 	}
+
+	e.Request, e.Response = h.reqRef, h.respRef
+	switch {
+	case h.reqRef.GetStored() || h.respRef.GetStored():
+		e.Completeness = v1.Completeness_FULL
+		if h.reqRef.GetTruncated() || h.respRef.GetTruncated() {
+			e.Completeness = v1.Completeness_TRUNCATED
+		}
+	default:
+		e.Completeness = v1.Completeness_METADATA_ONLY
+	}
+
 	h.rec.sink.Emit(e)
 }
 

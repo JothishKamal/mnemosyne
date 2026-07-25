@@ -9,6 +9,7 @@ import (
 
 	v1 "github.com/jothishkamal/mnemosyne/schema/gen/go/mnemosyne/v1"
 	"github.com/jothishkamal/mnemosyne/sdk"
+	"github.com/jothishkamal/mnemosyne/sdk/capture"
 	"github.com/jothishkamal/mnemosyne/sdk/identity"
 )
 
@@ -227,5 +228,40 @@ func TestInstantReportsSuccess(t *testing.T) {
 	defer sink.mu.Unlock()
 	if got := sink.events[0].Status; got != v1.Status_OK {
 		t.Fatalf("INSTANT status = %v, want OK", got)
+	}
+}
+
+func TestCompletenessReflectsPayloadStorage(t *testing.T) {
+	sink := &capturingSink{}
+	rec, err := sdk.New(sdk.Config{
+		Service: "s", Sink: sink, Enabled: true,
+		Capture: capture.NewEngine(capture.Policy{
+			Default: capture.LevelFull, MaxBytesPerTrace: 1024, MaxTraces: 4,
+		}),
+	})
+	if err != nil {
+		t.Fatalf("sdk.New: %v", err)
+	}
+	h := rec.Begin(context.Background(), sdk.Local{Name: "x"})
+	h.RecordRequest([]byte("body"))
+	h.End()
+
+	e := sink.ends()[0]
+	if e.Completeness != v1.Completeness_FULL {
+		t.Fatalf("completeness = %v, want FULL", e.Completeness)
+	}
+	if e.Request == nil || !e.Request.Stored {
+		t.Fatal("request payload ref missing or not stored")
+	}
+}
+
+func TestCompletenessIsMetadataOnlyWithoutCapture(t *testing.T) {
+	rec, sink := newTestRecorder(t)
+	h := rec.Begin(context.Background(), sdk.Local{Name: "x"})
+	h.RecordRequest([]byte("body")) // no capture engine configured
+	h.End()
+
+	if got := sink.ends()[0].Completeness; got != v1.Completeness_METADATA_ONLY {
+		t.Fatalf("completeness = %v, want METADATA_ONLY", got)
 	}
 }
