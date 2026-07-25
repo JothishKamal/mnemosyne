@@ -8,6 +8,7 @@ import (
 	"github.com/jothishkamal/mnemosyne/collector/query"
 	"github.com/jothishkamal/mnemosyne/replay"
 	"github.com/jothishkamal/mnemosyne/store"
+	"github.com/jothishkamal/mnemosyne/ui"
 )
 
 // New returns the collector handler, mounting both the ingest routes and the
@@ -19,5 +20,6 @@ func New(es store.EventStore, bs store.BlobStore) http.Handler {
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("ok"))
 	})
+	mux.Handle("/", ui.Handler())
 	return mux
 }
