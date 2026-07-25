@@ -102,6 +102,7 @@ func (r *Recorder) Instant(ctx context.Context, op Operation) {
 	}
 	scope, _ := r.resolveScope(ctx, nil)
 	e := r.newEvent(scope, r.gen.NextEvent(), v1.Phase_INSTANT, op)
+	e.Status = v1.Status_OK // an instant operation has already succeeded
 	r.sink.Emit(e)
 }
 
@@ -170,6 +171,9 @@ func (r *Recorder) resolveScope(ctx context.Context, rem *Remote) (mnemoctx.Scop
 	return mnemoctx.Scope{TraceID: tr, Sampled: true}, nil
 }
 
+// newEvent builds an event with everything known at construction time. Status
+// is deliberately left at STATUS_UNSPECIFIED: a BEGIN has no outcome yet, and
+// an operation that never ends must not claim one. End and Instant set it.
 func (r *Recorder) newEvent(scope mnemoctx.Scope, id identity.EventID, phase v1.Phase, op Operation) *v1.Event {
 	em := id.Emitter
 	e := &v1.Event{
@@ -180,7 +184,6 @@ func (r *Recorder) newEvent(scope mnemoctx.Scope, id identity.EventID, phase v1.
 		Hlc:           toProtoHLC(r.clk.Now()),
 		WallUnixNanos: r.now().UnixNano(),
 		Phase:         phase,
-		Status:        v1.Status_OK,
 		Completeness:  v1.Completeness_METADATA_ONLY,
 	}
 	if !scope.Current.IsZero() {
@@ -196,6 +199,11 @@ func toProtoHLC(t hlc.Timestamp) *v1.HLC {
 }
 
 // Handle is an open operation. All methods are safe on a nil receiver.
+//
+// A Handle is NOT safe for concurrent use: confine each Handle to the goroutine
+// that opened it. Its mutable state (status, error, links, span, ended) is
+// unsynchronised by design — the Recorder is shared and locked, a Handle is not.
+// Instrumentation adapters that fan out must open a Handle per goroutine.
 type Handle struct {
 	rec     *Recorder
 	ctx     context.Context

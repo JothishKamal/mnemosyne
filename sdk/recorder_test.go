@@ -195,3 +195,37 @@ func TestForeignRemoteParentBecomesLinkNotParent(t *testing.T) {
 		t.Fatal("foreign span id not carried on the link")
 	}
 }
+
+// TestBeginCarriesNoOutcome guards against re-attaching an outcome to BEGIN. An
+// unmatched BEGIN is how a deadlocked or hung operation appears; if it claimed
+// OK, the tool would report success for a request that never finished.
+func TestBeginCarriesNoOutcome(t *testing.T) {
+	rec, sink := newTestRecorder(t)
+	h := rec.Begin(context.Background(), sdk.Local{Name: "hangs"})
+	// Deliberately never ended.
+
+	sink.mu.Lock()
+	defer sink.mu.Unlock()
+	if len(sink.events) != 1 {
+		t.Fatalf("got %d events, want 1 BEGIN", len(sink.events))
+	}
+	begin := sink.events[0]
+	if begin.Phase != v1.Phase_BEGIN {
+		t.Fatalf("phase = %v, want BEGIN", begin.Phase)
+	}
+	if begin.Status != v1.Status_STATUS_UNSPECIFIED {
+		t.Fatalf("BEGIN status = %v, want STATUS_UNSPECIFIED: an operation with no outcome must not claim one", begin.Status)
+	}
+	_ = h
+}
+
+func TestInstantReportsSuccess(t *testing.T) {
+	rec, sink := newTestRecorder(t)
+	rec.Instant(context.Background(), sdk.Local{Name: "done"})
+
+	sink.mu.Lock()
+	defer sink.mu.Unlock()
+	if got := sink.events[0].Status; got != v1.Status_OK {
+		t.Fatalf("INSTANT status = %v, want OK", got)
+	}
+}
