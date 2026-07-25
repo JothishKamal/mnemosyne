@@ -2,6 +2,7 @@ package exporter_test
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -139,5 +140,82 @@ func TestGapsCarryTheRecordersEmitterID(t *testing.T) {
 	}
 	if ex.DroppedCount() == 0 {
 		t.Fatal("expected drops with a queue size of 1")
+	}
+}
+
+// TestTransportFailureProducesUnreachableGaps covers the path
+// TestUnreachableCollectorProducesGapsAndKeepsRunning cannot: that test only
+// asserts DroppedCount is non-zero, and ordinary queue-overflow backpressure
+// drives that counter on its own, so the transport-error path stayed
+// unexercised. This asserts the actual Gap records, with reason UNREACHABLE.
+//
+// The collector rejects the first batches and then recovers, which is what an
+// outage looks like: the gaps accumulated while it was down must be delivered
+// once it returns, or the timeline shows silence where events were lost.
+func TestTransportFailureProducesUnreachableGaps(t *testing.T) {
+	var mu sync.Mutex
+	var failing = true
+	var got []*v1.Gap
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		down := failing
+		mu.Unlock()
+		if down {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		var b v1.Batch
+		if err := proto.Unmarshal(body, &b); err == nil {
+			mu.Lock()
+			got = append(got, b.Gaps...)
+			mu.Unlock()
+		}
+		ack, _ := proto.Marshal(&v1.BatchAck{Accepted: uint32(len(b.Events))})
+		w.Write(ack)
+	}))
+	defer srv.Close()
+
+	ex := exporter.New(exporter.Config{
+		Endpoint: srv.URL, QueueSize: 64, BatchSize: 4,
+		FlushInterval: 5 * time.Millisecond, EmitterID: [8]byte{9},
+	})
+
+	for i := 0; i < 40; i++ {
+		ex.Emit(event(uint64(i)))
+	}
+	if err := ex.Flush(context.Background()); err != nil {
+		t.Fatalf("flush while down: %v", err)
+	}
+
+	mu.Lock()
+	failing = false // the collector comes back
+	mu.Unlock()
+
+	ex.Emit(event(999))
+	if err := ex.Flush(context.Background()); err != nil {
+		t.Fatalf("flush after recovery: %v", err)
+	}
+	ex.Close()
+
+	mu.Lock()
+	defer mu.Unlock()
+	var unreachable int
+	var dropped uint64
+	for _, g := range got {
+		if g.Reason == v1.GapReason_UNREACHABLE {
+			unreachable++
+			dropped += g.DroppedCount
+			if len(g.EmitterId) == 0 {
+				t.Fatal("gap carries no emitter id: it cannot be attributed")
+			}
+		}
+	}
+	if unreachable == 0 {
+		t.Fatal("a failing collector produced no UNREACHABLE gap: those events would be silent holes in the timeline")
+	}
+	if dropped == 0 {
+		t.Fatal("UNREACHABLE gaps report zero dropped events")
 	}
 }
