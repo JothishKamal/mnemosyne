@@ -134,6 +134,8 @@ func (r *Recorder) begin(ctx context.Context, op Operation, rem *Remote) *Handle
 	e.Links = links
 	r.sink.Emit(e)
 
+	beginHLC := hlc.Timestamp{WallMS: e.Hlc.WallMs, Logical: e.Hlc.Logical}
+
 	// The child scope is attached to the Handle, not written back into the
 	// caller's context. This is what keeps siblings siblings.
 	child := mnemoctx.With(ctx, mnemoctx.Scope{
@@ -151,6 +153,7 @@ func (r *Recorder) begin(ctx context.Context, op Operation, rem *Remote) *Handle
 		links:   links,
 		started: r.now(),
 		status:  v1.Status_OK,
+		hlc:     beginHLC,
 	}
 }
 
@@ -234,6 +237,7 @@ type Handle struct {
 	span    identity.SpanID
 	hasSpan bool
 	ended   bool
+	hlc     hlc.Timestamp
 
 	reqRef, respRef *v1.PayloadRef
 }
@@ -276,6 +280,15 @@ func (h *Handle) Scope() mnemoctx.Scope {
 		return mnemoctx.Scope{}
 	}
 	return h.scope
+}
+
+// HLC returns the hybrid logical clock timestamp assigned to this operation's
+// BEGIN event. This is the value propagated to downstream processes.
+func (h *Handle) HLC() hlc.Timestamp {
+	if h == nil {
+		return hlc.Timestamp{}
+	}
+	return h.hlc
 }
 
 // SetStatus sets the operation outcome.
