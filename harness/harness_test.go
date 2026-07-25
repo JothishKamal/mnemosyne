@@ -1,7 +1,6 @@
 package harness_test
 
 import (
-	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -27,30 +26,6 @@ func (s *sink) all() []*v1.Event {
 	return append([]*v1.Event(nil), s.events...)
 }
 
-// waitForHang blocks until the sink has recorded the hung operation's BEGIN
-// event. httptest.Server.Close closes its listener immediately, before
-// waiting for outstanding requests, so calling Close before the call chain
-// has actually connected all the way through to pricing-svc's Hang() races
-// the request itself: the client can see "connection refused" instead of
-// exercising the hang at all. Polling recorded state (never a fixed sleep)
-// keeps the wait exact without guessing a duration.
-func waitForHang(t *testing.T, sk *sink) {
-	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
-	for time.Now().Before(deadline) {
-		for _, e := range sk.all() {
-			if e.Phase != v1.Phase_BEGIN || e.OperationType != v1.OperationType_LOCAL {
-				continue
-			}
-			if v, ok := e.GetAttributes()["operation.name"]; ok && v.GetStringValue() == "hung-operation" {
-				return
-			}
-		}
-		runtime.Gosched()
-	}
-	t.Fatal("timed out waiting for the hung operation to be recorded")
-}
-
 func TestAcceptanceScenarioProducesTheExpectedGraph(t *testing.T) {
 	sk := &sink{}
 	h := harness.AcceptanceScenario(t, sk)
@@ -68,7 +43,9 @@ func TestAcceptanceScenarioProducesTheExpectedGraph(t *testing.T) {
 	// Wait until the call chain has actually reached the hang before closing:
 	// Close begins by tearing down listeners, and doing that before the chain
 	// has connected all the way through would race the request itself.
-	waitForHang(t, sk)
+	if err := h.WaitForHang(10 * time.Second); err != nil {
+		t.Fatal(err)
+	}
 
 	// The two failing attempts complete quickly; the third blocks.
 	h.Close()
@@ -153,7 +130,9 @@ func runAcceptanceScenario(t *testing.T) scenarioShape {
 		}
 	}()
 
-	waitForHang(t, sk)
+	if err := h.WaitForHang(10 * time.Second); err != nil {
+		t.Fatal(err)
+	}
 	h.Close()
 	<-done
 
@@ -234,7 +213,9 @@ func TestRetryAttemptsAreSiblingsNotAChain(t *testing.T) {
 			resp.Body.Close()
 		}
 	}()
-	waitForHang(t, sk)
+	if err := h.WaitForHang(10 * time.Second); err != nil {
+		t.Fatal(err)
+	}
 	h.Close()
 	<-done
 
