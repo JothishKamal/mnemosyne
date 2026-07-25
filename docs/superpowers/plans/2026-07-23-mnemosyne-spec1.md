@@ -20,6 +20,7 @@
 - **Redaction happens before the ring buffer.** Unredacted payloads must never reach the exporter.
 - **The SDK never blocks the application and never grows unbounded.** Recording is what gets sacrificed.
 - **Commit after every task.** No `Co-Authored-By` trailers.
+- **Race detection requires an explicit environment.** This machine's Go toolchain is `windows/386`, which the race detector does not support: `go test -race` prints `-race is not supported on windows/386` and **exits 2 without running the tests**. It fails loudly, so it cannot produce a false green — but every `-race` command the plan originally specified was impossible to satisfy on the default arch, meaning those steps could never have been completed as written. Always invoke race runs as `GOARCH=amd64 CGO_ENABLED=1 go test ... -race`, which works because the CPU is x64 and a mingw64 C toolchain is installed. Non-race runs stay `CGO_ENABLED=0`.
 - **Conventional Commits are mandatory** for every commit: `type(scope): subject`, imperative mood, lowercase subject, no trailing period. Types in use: `feat`, `fix`, `test`, `chore`, `docs`, `refactor`. Each task's commit step gives the exact message to use — use it verbatim.
 - **One branch per task**, named `task-NN-<slug>`, developed in its own git worktree and merged to `main` only via a reviewed pull request. Never commit directly to `main`.
 
@@ -939,7 +940,7 @@ git commit -m "feat(sdk): add hybrid logical clock with happens-before property 
 
 **Tests:** Monotonicity, cross-generator uniqueness, tracestate round-trip property test with a length assertion, traceparent parse/format round-trip, and rejection of malformed traceparent values.
 
-**Definition of done:** `go test ./sdk/identity/ -race` passes, including a property test asserting round-trip fidelity and the 256-character bound across the full `uint64` sequence range.
+**Definition of done:** `GOARCH=amd64 CGO_ENABLED=1 go test ./sdk/identity/ -race` passes, including a property test asserting round-trip fidelity and the 256-character bound across the full `uint64` sequence range.
 
 **Risks:** The encoding is the risk. `tracestate` has a restricted character set (lowercase alphanumeric plus a few punctuation marks) and a hard length cap; an encoding that works for small sequence numbers and silently breaks at high ones would fail only after a service had been up for a long time. The property test draws from the full `uint64` range specifically to catch that.
 
@@ -1122,7 +1123,7 @@ func (g *Generator) NewSpan() (SpanID, error) {
 
 - [ ] **Step 4: Run the identity tests**
 
-Run: `go test ./sdk/identity/ -race -v`
+Run: `GOARCH=amd64 CGO_ENABLED=1 go test ./sdk/identity/ -race -v`
 Expected: PASS — all four tests.
 
 - [ ] **Step 5: Write the failing propagation-codec tests**
@@ -1334,7 +1335,7 @@ func ParseTraceparent(v string) (TraceID, SpanID, bool) {
 
 - [ ] **Step 8: Run the full identity suite**
 
-Run: `go test ./sdk/identity/ -race -rapid.checks=1000 -v`
+Run: `GOARCH=amd64 CGO_ENABLED=1 go test ./sdk/identity/ -race -rapid.checks=1000 -v`
 Expected: PASS — all tests, including the round-trip property test at 1000 checks.
 
 - [ ] **Step 9: Commit**
@@ -1375,7 +1376,7 @@ git commit -m "feat(sdk): add identity generation and W3C propagation codec"
 
 **Tests:** Sibling regression test, nesting test, idempotent `End`, nil-receiver safety, disabled-recorder emits nothing, foreign-parent linking, and a `rapid` property test over randomized nesting trees asserting every emitted event's parent equals its lexically enclosing scope.
 
-**Definition of done:** Nested `Begin`/`End()` calls always produce sibling and parent relationships satisfying the scope invariant under 1000 randomized nesting trees, and `go test ./sdk/... -race` is green.
+**Definition of done:** Nested `Begin`/`End()` calls always produce sibling and parent relationships satisfying the scope invariant under 1000 randomized nesting trees, and `GOARCH=amd64 CGO_ENABLED=1 go test ./sdk/... -race` is green.
 
 **Risks:** Highest-risk task in Spec 1. Three specific failure modes:
 - **The linked-list bug.** If the API were `ctx, h := rec.Begin(ctx, ...)`, callers would reassign `ctx` and silently turn siblings into a chain. The API returns the child context *on the Handle* specifically to make that impossible. Do not change this signature for ergonomics.
@@ -2068,7 +2069,7 @@ func errorType(err error) string {
 
 - [ ] **Step 9: Run the suite**
 
-Run: `go test ./sdk/... -race -v`
+Run: `GOARCH=amd64 CGO_ENABLED=1 go test ./sdk/... -race -v`
 Expected: PASS — all recorder and mnemoctx tests.
 
 - [ ] **Step 10: Write the scope-invariant property test**
@@ -2159,7 +2160,7 @@ func newTestRecorderRapid(rt *rapid.T) (*sdk.Recorder, *capturingSink) {
 
 - [ ] **Step 11: Run the property test**
 
-Run: `go test ./sdk/ -run TestScopeInvariant -rapid.checks=1000 -race -v`
+Run: `GOARCH=amd64 CGO_ENABLED=1 go test ./sdk/ -run TestScopeInvariant -rapid.checks=1000 -race -v`
 Expected: PASS with `[rapid] OK, passed 1000 tests`.
 
 - [ ] **Step 12: Commit**
@@ -2199,7 +2200,7 @@ git commit -m "feat(sdk): add Recorder, Handle, and mnemoctx with scope invarian
 
 **Tests:** Redaction over bytes (not structs), ring eviction under both bounds, `PayloadRef` populated when not stored, flush-then-reflush, and a `rapid` property test asserting total ring bytes never exceed `MaxBytesPerTrace * MaxTraces`.
 
-**Definition of done:** `go test ./sdk/capture/ -race -rapid.checks=1000` is green, including the bounded-memory property test and a redaction test that greps the raw ring bytes for the secret.
+**Definition of done:** `GOARCH=amd64 CGO_ENABLED=1 go test ./sdk/capture/ -race -rapid.checks=1000` is green, including the bounded-memory property test and a redaction test that greps the raw ring bytes for the secret.
 
 **Risks:** The bounded-memory guarantee is the load-bearing claim — a leak here takes down the instrumented application, which is far worse than losing a recording. The property test asserts the bound directly rather than trusting the eviction logic. Second risk: redaction that operates on parsed structures rather than emitted bytes can miss a value that survives re-serialization; the test asserts over bytes for exactly that reason.
 
@@ -2732,7 +2733,7 @@ func (e *Engine) BufferedTraces() int {
 
 - [ ] **Step 8: Run the capture suite**
 
-Run: `go test ./sdk/capture/ -race -rapid.checks=1000 -v`
+Run: `GOARCH=amd64 CGO_ENABLED=1 go test ./sdk/capture/ -race -rapid.checks=1000 -v`
 Expected: PASS — all tests including `TestRingMemoryIsAlwaysBounded`.
 
 - [ ] **Step 9: Wire payload capture into the Handle**
@@ -2840,7 +2841,7 @@ Add `"github.com/jothishkamal/mnemosyne/sdk/capture"` to the test imports.
 
 - [ ] **Step 11: Run the full SDK suite**
 
-Run: `go test ./sdk/... -race`
+Run: `GOARCH=amd64 CGO_ENABLED=1 go test ./sdk/... -race`
 Expected: PASS — every package.
 
 - [ ] **Step 12: Commit**
@@ -3395,7 +3396,7 @@ then set `hlc: beginHLC` in the returned `Handle` literal.
 
 - [ ] **Step 8: Run the propagation suite**
 
-Run: `go test ./sdk/... -race -v`
+Run: `GOARCH=amd64 CGO_ENABLED=1 go test ./sdk/... -race -v`
 Expected: PASS — all five nethttp tests plus the layering test.
 
 - [ ] **Step 10: Verify propagation by eye through the harness**
@@ -3443,7 +3444,7 @@ git commit -m "feat(sdk): add HTTP instrumentation with W3C propagation"
 
 **Tests:** A shared conformance suite exercised against the in-memory implementation now and against SQLite/blobfs in Task 12, so both backends are proven identical.
 
-**Definition of done:** `go test ./store/... -race` is green and `storetest.RunConformance` covers append/read, dedup, ordering under skewed wall clocks, and blob round-trip.
+**Definition of done:** `GOARCH=amd64 CGO_ENABLED=1 go test ./store/... -race` is green and `storetest.RunConformance` covers append/read, dedup, ordering under skewed wall clocks, and blob round-trip.
 
 **Risks:** Writing the conformance suite against the in-memory store's quirks rather than the interface's contract, which would let SQLite pass while behaving differently. Mitigation: the suite is written before the second backend exists but must only use interface methods.
 
@@ -3966,7 +3967,7 @@ func TestMemoryConformance(t *testing.T) {
 
 - [ ] **Step 6: Run the conformance suite**
 
-Run: `go test ./store/... -race -v`
+Run: `GOARCH=amd64 CGO_ENABLED=1 go test ./store/... -race -v`
 Expected: PASS — all seven conformance subtests.
 
 - [ ] **Step 7: Commit**
@@ -4386,7 +4387,7 @@ func (e *Exporter) DroppedCount() uint64 {
 
 - [ ] **Step 4: Run the exporter tests**
 
-Run: `go test ./sdk/exporter/ -race -v`
+Run: `GOARCH=amd64 CGO_ENABLED=1 go test ./sdk/exporter/ -race -v`
 Expected: PASS — all three tests.
 
 - [ ] **Step 4b: Resolve the emitter-ID ordering problem**
@@ -4447,7 +4448,7 @@ if err != nil {
 ex.SetEmitterID(rec.EmitterID())
 ```
 
-Run: `go test ./sdk/... -race`
+Run: `GOARCH=amd64 CGO_ENABLED=1 go test ./sdk/... -race`
 Expected: PASS.
 
 - [ ] **Step 5: Write the ingest handler test**
@@ -4610,7 +4611,7 @@ func Handler(es store.EventStore, bs store.BlobStore) http.Handler {
 
 - [ ] **Step 7: Run the ingest tests**
 
-Run: `go test ./collector/... -race -v`
+Run: `GOARCH=amd64 CGO_ENABLED=1 go test ./collector/... -race -v`
 Expected: PASS — both tests.
 
 - [ ] **Step 8: Write the collector binary**
@@ -4709,7 +4710,7 @@ git commit -m "feat(collector): add batching exporter with gap records and inges
 
 **Tests:** The harness's own test asserts the acceptance scenario produces the expected edge counts, so a harness regression is caught before it corrupts downstream work.
 
-**Definition of done:** `go test ./harness/ -race` reproduces the three-service incident and asserts: one trace, `REMOTE_CALL` edges across all three services, exactly three `RETRY_OF` links, and exactly one unmatched `BEGIN`.
+**Definition of done:** `GOARCH=amd64 CGO_ENABLED=1 go test ./harness/ -race` reproduces the three-service incident and asserts: one trace, `REMOTE_CALL` edges across all three services, exactly three `RETRY_OF` links, and exactly one unmatched `BEGIN`.
 
 **Risks:** A harness that is subtly non-deterministic makes every downstream failure hard to attribute. Determinism comes from the virtual clock plus in-process `httptest` servers; do not introduce real sleeps. Second risk: `Hang()` leaking goroutines and making the whole suite flaky — it must be released at `Close()`.
 
@@ -5152,7 +5153,7 @@ func TestAcceptanceScenarioProducesTheExpectedGraph(t *testing.T) {
 
 - [ ] **Step 6: Run the harness test**
 
-Run: `go test ./harness/ -race -v`
+Run: `GOARCH=amd64 CGO_ENABLED=1 go test ./harness/ -race -v`
 Expected: PASS. If it hangs, `Hang()` is not being released by `Close()` — fix that before proceeding.
 
 - [ ] **Step 7: Commit**
@@ -5193,7 +5194,7 @@ git commit -m "test(harness): add deterministic incident harness and acceptance 
 
 **Tests:** Bucketing bound under a large synthetic event set, in-flight detection using the harness scenario, chain truncation, skew warning from the harness's skewed service, and gap markers surfacing in the model.
 
-**Definition of done:** `go test ./replay/ -race` is green, including a test that feeds 100,000 synthetic events at `Resolution: 200` and asserts no lane exceeds 200 buckets.
+**Definition of done:** `GOARCH=amd64 CGO_ENABLED=1 go test ./replay/ -race` is green, including a test that feeds 100,000 synthetic events at `Resolution: 200` and asserts no lane exceeds 200 buckets.
 
 **Risks:** Bucketing arithmetic that is off by one at window edges silently drops the first or last event of an incident — which is often the interesting one, and an index past the last bucket panics the engine outright. `TestBucketCountIsBoundedByResolution` asserts total counts rather than only bucket length, but its events stop one millisecond short of `ToWallMS`, so it cannot exercise the clamp at all. `TestEventsAtWindowEdgesAreCounted` places events at exactly `FromWallMS` and exactly `ToWallMS` and is the test that actually covers the boundary — verified to panic without the clamp.
 
@@ -5751,7 +5752,7 @@ func (e *Engine) Chain(ctx context.Context, traceID []byte, eventID *v1.EventID,
 
 - [ ] **Step 6: Run the replay tests**
 
-Run: `go test ./replay/ -race -v`
+Run: `GOARCH=amd64 CGO_ENABLED=1 go test ./replay/ -race -v`
 Expected: PASS — all five tests.
 
 - [ ] **Step 7: Write the query API**
@@ -5879,7 +5880,7 @@ Add imports for `query` and `replay`.
 
 - [ ] **Step 9: Run everything**
 
-Run: `go test ./... -race`
+Run: `GOARCH=amd64 CGO_ENABLED=1 go test ./... -race`
 Expected: PASS across all packages.
 
 - [ ] **Step 10: Commit**
@@ -6331,7 +6332,7 @@ git commit -m "feat(ui): add split-view replay UI with in-flight, gap, and skew 
 3. Events are indexed on `(hlc_wall_ms, hlc_logical, emitter_id)` and on `trace_id`.
 4. `blobfs` is content-addressed and sharded by hash prefix so no directory holds an unbounded number of files.
 
-**Definition of done:** `CGO_ENABLED=0 go test ./store/... -race` passes for memory, sqlite, and blobfs, and `mnemo -store sqlite -data ./data` serves a replay of a recording that survives a restart.
+**Definition of done:** `GOARCH=amd64 CGO_ENABLED=1 go test ./store/... -race` passes for memory, sqlite, and blobfs, and `mnemo -store sqlite -data ./data` serves a replay of a recording that survives a restart.
 
 **Risks:** Writing SQLite-specific tests instead of reusing the conformance suite, which would let the two backends drift. The suite is the only test either backend gets.
 
@@ -6741,7 +6742,7 @@ func (s *Store) Close() error { return nil }
 
 - [ ] **Step 7: Run the conformance suite against both backends**
 
-Run: `CGO_ENABLED=0 go test ./store/... -race -v`
+Run: `GOARCH=amd64 CGO_ENABLED=1 go test ./store/... -race -v`
 Expected: PASS — the same seven subtests for memory, sqlite, and blobfs.
 
 - [ ] **Step 8: Add backend selection to the collector**
@@ -6829,7 +6830,7 @@ git commit -m "feat(store): add SQLite and filesystem backends passing conforman
 
 **Invariants:** The assertion table from the frozen spec, in full. Each row maps to one subtest.
 
-**Definition of done:** `CGO_ENABLED=0 go test ./acceptance/ -race -v` passes all seven subtests against `sqlite` + `blobfs`.
+**Definition of done:** `GOARCH=amd64 CGO_ENABLED=1 go test ./acceptance/ -race -v` passes all seven subtests against `sqlite` + `blobfs`.
 
 **Risks:** Writing the test against implementation behaviour rather than the spec's claims. Each subtest name is copied from the spec's table so a reviewer can check the mapping by eye. If a subtest is hard to write, that is information about the design, not a reason to weaken the assertion — amend the spec instead.
 
@@ -7103,12 +7104,12 @@ func TestRecordingSurvivesRestart(t *testing.T) {
 
 - [ ] **Step 2: Run the acceptance suite**
 
-Run: `CGO_ENABLED=0 go test ./acceptance/ -race -v`
+Run: `GOARCH=amd64 CGO_ENABLED=1 go test ./acceptance/ -race -v`
 Expected: PASS — all seven tests.
 
 - [ ] **Step 3: Run everything**
 
-Run: `CGO_ENABLED=0 go test ./... -race`
+Run: `GOARCH=amd64 CGO_ENABLED=1 go test ./... -race`
 Expected: PASS across every package.
 
 - [ ] **Step 4: Verify the whole thing by hand one last time**
