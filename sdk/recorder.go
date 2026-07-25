@@ -66,6 +66,11 @@ func (r *Recorder) PanicCount() uint64 {
 	return r.panics.Load()
 }
 
+// EmitterID returns this recorder's emitter ID, so components constructed
+// before the recorder — the exporter in particular — can be told which emitter
+// they are shipping for.
+func (r *Recorder) EmitterID() identity.EmitterID { return r.gen.Emitter() }
+
 // contain recovers a panic from recording work and counts it so the failure
 // is never silent. It must only guard recording work — Handle's pure
 // accessors (Context, ID, Scope, HLC) are deliberately left unguarded because
