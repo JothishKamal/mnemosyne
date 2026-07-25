@@ -13,6 +13,10 @@ import (
 	mnemohttp "github.com/jothishkamal/mnemosyne/sdk/instrument/nethttp"
 )
 
+// ErrHangTimeout is returned by WaitForHang when the scenario does not reach
+// its Ctx.Hang() call within the given timeout.
+var ErrHangTimeout = fmt.Errorf("harness: timed out waiting for the scenario to reach Ctx.Hang()")
+
 // Service is one instrumented process in a scenario.
 type Service struct {
 	Name   string
@@ -44,6 +48,9 @@ type Harness struct {
 	clock    *Clock
 	release  chan struct{}
 	once     sync.Once
+
+	hangReached chan struct{}
+	hangOnce    sync.Once
 }
 
 // Ctx is what a scenario handler receives.
@@ -120,6 +127,11 @@ func (c *Ctx) Hang() {
 	// Opened and never ended on purpose: an unmatched BEGIN is exactly what a
 	// deadlocked or hung operation looks like in a real recording.
 	_ = c.svc.Rec.Begin(c.r.Context(), sdk.Local{Name: "hung-operation"})
+	// Signal that the scenario has actually reached the hang before blocking,
+	// so callers can wait for this precisely instead of polling recorded
+	// state or sleeping a guessed duration. The Once makes this safe if Hang
+	// is ever called more than once, or concurrently.
+	c.h.hangOnce.Do(func() { close(c.h.hangReached) })
 	<-c.h.release
 }
 
@@ -133,10 +145,11 @@ func New(t *testing.T, opts Options) *Harness {
 		opts.Start = time.Date(2026, 7, 23, 10, 34, 12, 0, time.UTC)
 	}
 	h := &Harness{
-		t:        t,
-		services: map[string]*Service{},
-		clock:    NewClock(opts.Start),
-		release:  make(chan struct{}),
+		t:           t,
+		services:    map[string]*Service{},
+		clock:       NewClock(opts.Start),
+		release:     make(chan struct{}),
+		hangReached: make(chan struct{}),
 	}
 
 	for _, spec := range opts.Services {
@@ -171,6 +184,25 @@ func New(t *testing.T, opts Options) *Harness {
 
 // Service returns a service by name.
 func (h *Harness) Service(name string) *Service { return h.services[name] }
+
+// HangReached returns a channel that is closed once the scenario's Ctx.Hang()
+// has actually been called. Callers that need to know the scenario has
+// reached the hang before doing something else (typically calling Close, or
+// select-ing with a timeout) should use this instead of polling recorded
+// state or sleeping a guessed duration.
+func (h *Harness) HangReached() <-chan struct{} { return h.hangReached }
+
+// WaitForHang blocks until the scenario reaches Ctx.Hang(), or returns
+// ErrHangTimeout if it does not do so within timeout. It never blocks
+// indefinitely.
+func (h *Harness) WaitForHang(timeout time.Duration) error {
+	select {
+	case <-h.hangReached:
+		return nil
+	case <-time.After(timeout):
+		return ErrHangTimeout
+	}
+}
 
 // Run issues an uninstrumented request to the first service, standing in for an
 // external client.

@@ -5,7 +5,6 @@ package acceptance_test
 import (
 	"context"
 	"path/filepath"
-	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -21,8 +20,8 @@ import (
 // storeSink writes every recorded event straight into an EventStore, so the
 // acceptance suite exercises the durable storage path rather than depending
 // on exporter timing. It also buffers events locally (safe for concurrent
-// use) so tests can inspect the recording and so waitForHang can poll it
-// from a different goroutine than the one driving the request.
+// use) so tests can inspect the recording from a different goroutine than the
+// one driving the request.
 type storeSink struct {
 	t  *testing.T
 	es store.EventStore
@@ -46,37 +45,14 @@ func (s *storeSink) all() []*v1.Event {
 	return append([]*v1.Event(nil), s.events...)
 }
 
-// waitForHang blocks until the sink has recorded the hung operation's BEGIN
-// event. This mirrors harness/harness_test.go's helper of the same name:
-// httptest.Server.Close closes its listener immediately, before waiting for
-// outstanding requests, so calling Close before the call chain has actually
-// connected all the way through to pricing-svc's Hang() races the request
-// itself. Polling recorded state (never a fixed sleep) keeps the wait exact
-// without guessing a duration.
-func waitForHang(t *testing.T, sk *storeSink) {
-	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
-	for time.Now().Before(deadline) {
-		for _, e := range sk.all() {
-			if e.Phase != v1.Phase_BEGIN || e.OperationType != v1.OperationType_LOCAL {
-				continue
-			}
-			if v, ok := e.GetAttributes()["operation.name"]; ok && v.GetStringValue() == "hung-operation" {
-				return
-			}
-		}
-		runtime.Gosched()
-	}
-	t.Fatal("timed out waiting for the hung operation to be recorded")
-}
-
 // runScenario drives the harness's AcceptanceScenario to completion against
 // sink, following the exact sequencing harness/harness_test.go requires: run
-// the request in the background, wait until the hang has actually been
-// recorded, then Close (which releases the hang), then wait for the request
-// goroutine to finish. A naive synchronous h.Run(...) races Close's teardown
-// against the call chain and records nothing for the hung leg.
-func runScenario(t *testing.T, h *harness.Harness, sk *storeSink) {
+// the request in the background, wait until the harness signals it has
+// actually reached the hang, then Close (which releases the hang), then wait
+// for the request goroutine to finish. A naive synchronous h.Run(...) races
+// Close's teardown against the call chain and records nothing for the hung
+// leg.
+func runScenario(t *testing.T, h *harness.Harness) {
 	t.Helper()
 	done := make(chan struct{})
 	go func() {
@@ -85,7 +61,9 @@ func runScenario(t *testing.T, h *harness.Harness, sk *storeSink) {
 			resp.Body.Close()
 		}
 	}()
-	waitForHang(t, sk)
+	if err := h.WaitForHang(10 * time.Second); err != nil {
+		t.Fatal(err)
+	}
 	h.Close()
 	<-done
 }
@@ -112,7 +90,7 @@ func recording(t *testing.T) (store.EventStore, store.BlobStore, []*v1.Event) {
 	// storage layer without depending on exporter timing.
 	sink := &storeSink{t: t, es: es}
 	h := harness.AcceptanceScenario(t, sink)
-	runScenario(t, h, sink)
+	runScenario(t, h)
 
 	return es, bs, sink.all()
 }
@@ -291,7 +269,7 @@ func TestRecordingSurvivesRestart(t *testing.T) {
 	}
 	sink := &storeSink{t: t, es: es}
 	h := harness.AcceptanceScenario(t, sink)
-	runScenario(t, h, sink)
+	runScenario(t, h)
 
 	events := sink.all()
 	traceID := events[0].TraceId
