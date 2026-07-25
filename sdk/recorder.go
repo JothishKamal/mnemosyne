@@ -6,6 +6,7 @@ package sdk
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"time"
 
 	v1 "github.com/jothishkamal/mnemosyne/schema/gen/go/mnemosyne/v1"
@@ -47,6 +48,37 @@ type Recorder struct {
 	now     func() time.Time
 	enabled bool
 	cap     *capture.Engine
+
+	// panics counts containments: recording panics that were recovered rather
+	// than allowed to break the wrapped application. Must be an atomic.Uint64
+	// value (not atomic.AddUint64 on a plain field) because this project
+	// targets 32-bit platforms, where a struct-field 64-bit atomic panics if
+	// it isn't 8-byte aligned.
+	panics atomic.Uint64
+}
+
+// PanicCount returns the number of recording panics this Recorder has
+// recovered. A non-zero count means recording work panicked and was
+// contained — recording is broken and should be investigated, but the
+// application it instruments kept running. It is never expected to grow in a
+// healthy deployment.
+func (r *Recorder) PanicCount() uint64 {
+	return r.panics.Load()
+}
+
+// contain recovers a panic from recording work and counts it so the failure
+// is never silent. It must only guard recording work — Handle's pure
+// accessors (Context, ID, Scope, HLC) are deliberately left unguarded because
+// a panic there would be an application bug, not a recording bug, and this
+// package must not hide those.
+//
+// Usage is always `defer r.contain()` at the top of a guarded section, never
+// an inline recover(): a single, consistent shape keeps every containment
+// point auditable.
+func (r *Recorder) contain() {
+	if p := recover(); p != nil {
+		r.panics.Add(1)
+	}
 }
 
 // Remote describes trace context received from another process.
@@ -105,11 +137,13 @@ func (r *Recorder) BeginRemote(ctx context.Context, rem Remote, op Operation) *H
 
 // FlushTrace returns the buffered payloads for a trace, for the exporter to
 // upload. Called when a trigger fires.
-func (r *Recorder) FlushTrace(tr identity.TraceID) []capture.Blob {
+func (r *Recorder) FlushTrace(tr identity.TraceID) (blobs []capture.Blob) {
 	if r.cap == nil {
 		return nil
 	}
-	return r.cap.Flush(tr)
+	defer r.contain()
+	blobs = r.cap.Flush(tr)
+	return blobs
 }
 
 // Instant records an operation with no meaningful duration.
@@ -117,34 +151,53 @@ func (r *Recorder) Instant(ctx context.Context, op Operation) {
 	if !r.enabled {
 		return
 	}
+	defer r.contain()
 	scope, _ := r.resolveScope(ctx, nil)
 	e := r.newEvent(scope, r.gen.NextEvent(), v1.Phase_INSTANT, op)
 	e.Status = v1.Status_OK // an instant operation has already succeeded
 	r.sink.Emit(e)
 }
 
-func (r *Recorder) begin(ctx context.Context, op Operation, rem *Remote) *Handle {
+// begin performs the recording work behind Begin/BeginRemote. It must always
+// return a usable Handle: callers pass h.Context() straight into things like
+// http.NewRequestWithContext, so a nil Handle here would turn a recording bug
+// into a different, worse application crash.
+//
+// h starts as an inert fallback carrying the caller's own context. It is only
+// promoted to child once the child context has been computed and the BEGIN
+// event has been fully constructed and emitted without panicking — so if
+// recording work panics anywhere along the way (event construction, a bad
+// Operation implementation, the Sink itself), contain() recovers it, counts
+// it, and the caller still gets back a working, if inert, Handle.
+func (r *Recorder) begin(ctx context.Context, op Operation, rem *Remote) (h *Handle) {
 	if !r.enabled {
 		return &Handle{ctx: ctx}
 	}
+	h = &Handle{ctx: ctx}
+	defer r.contain()
+
 	scope, links := r.resolveScope(ctx, rem)
 	id := r.gen.NextEvent()
 
 	e := r.newEvent(scope, id, v1.Phase_BEGIN, op)
 	e.Links = links
-	r.sink.Emit(e)
 
 	beginHLC := hlc.Timestamp{WallMS: e.Hlc.WallMs, Logical: e.Hlc.Logical}
 
 	// The child scope is attached to the Handle, not written back into the
-	// caller's context. This is what keeps siblings siblings.
+	// caller's context. This is what keeps siblings siblings. Update the
+	// fallback's context now, before the Sink is invoked below, so that even
+	// if Emit panics the caller still gets a context usable for nested work.
 	child := mnemoctx.With(ctx, mnemoctx.Scope{
 		TraceID: scope.TraceID,
 		Current: id,
 		Sampled: scope.Sampled,
 	})
+	h.ctx = child
 
-	return &Handle{
+	r.sink.Emit(e)
+
+	h = &Handle{
 		rec:     r,
 		ctx:     child,
 		scope:   scope,
@@ -155,6 +208,7 @@ func (r *Recorder) begin(ctx context.Context, op Operation, rem *Remote) *Handle
 		status:  v1.Status_OK,
 		hlc:     beginHLC,
 	}
+	return h
 }
 
 // resolveScope determines the trace and parent for a new operation, and returns
@@ -260,17 +314,19 @@ func (h *Handle) ID() identity.EventID {
 
 // SpanID returns the W3C span ID for this operation, allocating one on first
 // use. Span IDs exist only for events that cross a process boundary.
-func (h *Handle) SpanID() identity.SpanID {
+func (h *Handle) SpanID() (id identity.SpanID) {
 	if h == nil || h.rec == nil {
 		return identity.SpanID{}
 	}
-	if !h.hasSpan {
-		sp, err := h.rec.gen.NewSpan()
-		if err != nil {
-			return identity.SpanID{}
-		}
-		h.span, h.hasSpan = sp, true
+	if h.hasSpan {
+		return h.span
 	}
+	defer h.rec.contain()
+	sp, err := h.rec.gen.NewSpan()
+	if err != nil {
+		return identity.SpanID{}
+	}
+	h.span, h.hasSpan = sp, true
 	return h.span
 }
 
@@ -332,6 +388,7 @@ func (h *Handle) RecordRequest(body []byte) {
 	if h == nil || h.rec == nil || h.rec.cap == nil {
 		return
 	}
+	defer h.rec.contain()
 	h.reqRef = h.rec.cap.Record(h.scope.TraceID, h.id, capture.KindRequest, body)
 }
 
@@ -340,6 +397,7 @@ func (h *Handle) RecordResponse(body []byte) {
 	if h == nil || h.rec == nil || h.rec.cap == nil {
 		return
 	}
+	defer h.rec.contain()
 	h.respRef = h.rec.cap.Record(h.scope.TraceID, h.id, capture.KindResponse, body)
 }
 
@@ -349,6 +407,7 @@ func (h *Handle) End() {
 		return
 	}
 	h.ended = true
+	defer h.rec.contain()
 
 	e := h.rec.newEvent(h.scope, h.id, v1.Phase_END, h.op)
 	e.DurationNanos = h.rec.now().Sub(h.started).Nanoseconds()

@@ -170,6 +170,44 @@ func TestServerSetsCaptureHeaderOnError(t *testing.T) {
 	}
 }
 
+// panickingSink is a Sink whose Emit always panics, standing in for a broken
+// exporter or any other bug in the recording path.
+type panickingSink struct{}
+
+func (panickingSink) Emit(*v1.Event) {
+	panic("boom: recording exploded")
+}
+
+// TestPanicInRecordingDoesNotKillTheRequest is the end-to-end proof of
+// invariant 5: a panic anywhere in the recording path must never break the
+// wrapped handler's request. Recording is always what gets sacrificed.
+func TestPanicInRecordingDoesNotKillTheRequest(t *testing.T) {
+	rec, err := sdk.New(sdk.Config{Service: "svc", Sink: panickingSink{}, Enabled: true})
+	if err != nil {
+		t.Fatalf("sdk.New: %v", err)
+	}
+
+	srv := httptest.NewServer(mnemohttp.Middleware(rec)(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			io.WriteString(w, "served anyway")
+		})))
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL)
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("reading body: %v", err)
+	}
+	if string(body) != "served anyway" {
+		t.Fatalf("handler output = %q, want %q; a recording panic broke the request", body, "served anyway")
+	}
+}
+
 func TestMiddlewareDoesNotBreakTheHandlerOnRecordingFailure(t *testing.T) {
 	rec, _ := newRec(t, "svc")
 	srv := httptest.NewServer(mnemohttp.Middleware(rec)(
