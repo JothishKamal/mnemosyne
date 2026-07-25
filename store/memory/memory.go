@@ -97,72 +97,12 @@ func (s *Events) Gaps(_ context.Context, from, to uint64) ([]*v1.Gap, error) {
 	return out, nil
 }
 
-func (s *Events) Traces(_ context.Context, q store.TraceQuery) ([]store.TraceSummary, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	// traceAcc tracks the running summary for a trace plus the earliest event
-	// seen so far (by HLC), which supplies the root fields.
-	type traceAcc struct {
-		summary store.TraceSummary
-		root    *v1.Event
+func (s *Events) Traces(ctx context.Context, q store.TraceQuery) ([]store.TraceSummary, error) {
+	events, err := s.Window(ctx, store.WindowQuery{FromWallMS: q.FromWallMS, ToWallMS: q.ToWallMS})
+	if err != nil {
+		return nil, err
 	}
-
-	byTrace := map[string]*traceAcc{}
-	for _, e := range s.events {
-		w := e.GetHlc().GetWallMs()
-		if w < q.FromWallMS || w > q.ToWallMS {
-			continue
-		}
-		if q.Service != "" && e.GetService().GetName() != q.Service {
-			continue
-		}
-		key := string(e.TraceId)
-		acc, ok := byTrace[key]
-		if !ok {
-			acc = &traceAcc{summary: store.TraceSummary{
-				TraceID:     append([]byte(nil), e.TraceId...),
-				StartWallMS: w,
-				EndWallMS:   w,
-			}}
-			byTrace[key] = acc
-		}
-		if acc.root == nil || hlcLess(e, acc.root) {
-			acc.root = e
-		}
-		acc.summary.EventCount++
-		if w < acc.summary.StartWallMS {
-			acc.summary.StartWallMS = w
-		}
-		if w > acc.summary.EndWallMS {
-			acc.summary.EndWallMS = w
-		}
-		if e.Status == v1.Status_ERROR || e.Status == v1.Status_TIMEOUT {
-			acc.summary.HasError = true
-		}
-	}
-
-	out := make([]store.TraceSummary, 0, len(byTrace))
-	for _, acc := range byTrace {
-		if q.OnlyErrors && !acc.summary.HasError {
-			continue
-		}
-		acc.summary.RootService = acc.root.GetService().GetName()
-		acc.summary.RootRoute = acc.root.GetHttpServer().GetRoute()
-		out = append(out, acc.summary)
-	}
-	// Ordered by StartWallMS, then by TraceID bytes as a deterministic
-	// tie-break (see store.EventStore.Traces).
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].StartWallMS != out[j].StartWallMS {
-			return out[i].StartWallMS < out[j].StartWallMS
-		}
-		return bytes.Compare(out[i].TraceID, out[j].TraceID) < 0
-	})
-	if q.Limit > 0 && len(out) > q.Limit {
-		out = out[:q.Limit]
-	}
-	return out, nil
+	return store.SummarizeTraces(events, q), nil
 }
 
 func (s *Events) Close() error { return nil }
