@@ -5195,7 +5195,7 @@ git commit -m "test(harness): add deterministic incident harness and acceptance 
 
 **Definition of done:** `go test ./replay/ -race` is green, including a test that feeds 100,000 synthetic events at `Resolution: 200` and asserts no lane exceeds 200 buckets.
 
-**Risks:** Bucketing arithmetic that is off by one at window edges silently drops the first or last event of an incident — which is often the interesting one. The bucketing test asserts on total counts, not just bucket length, so a dropped event fails the test.
+**Risks:** Bucketing arithmetic that is off by one at window edges silently drops the first or last event of an incident — which is often the interesting one, and an index past the last bucket panics the engine outright. `TestBucketCountIsBoundedByResolution` asserts total counts rather than only bucket length, but its events stop one millisecond short of `ToWallMS`, so it cannot exercise the clamp at all. `TestEventsAtWindowEdgesAreCounted` places events at exactly `FromWallMS` and exactly `ToWallMS` and is the test that actually covers the boundary — verified to panic without the clamp.
 
 - [ ] **Step 1: Write the model types**
 

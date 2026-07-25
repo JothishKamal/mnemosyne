@@ -171,3 +171,46 @@ func TestChainIsBoundedAndMarksTruncation(t *testing.T) {
 		t.Fatalf("chain starts at event %s, want the selected event 50", got)
 	}
 }
+
+// TestEventsAtWindowEdgesAreCounted pins the boundary the bucketing clamp
+// exists for. TestBucketCountIsBoundedByResolution never places an event at
+// ToWallMS — its events stop one millisecond short — so it cannot detect a
+// missing or wrong clamp. An off-by-one here silently drops the first or last
+// event of an incident, which is often the interesting one.
+func TestEventsAtWindowEdgesAreCounted(t *testing.T) {
+	es, bs := memory.NewEvents(), memory.NewBlobs()
+	ctx := context.Background()
+
+	const from, to = 1000, 2000
+	if err := es.AppendEvents(ctx, []*v1.Event{
+		synth(1, from, "svc", v1.Phase_END, v1.Status_OK),     // exactly the lower edge
+		synth(2, (from+to)/2, "svc", v1.Phase_END, v1.Status_OK), // middle
+		synth(3, to, "svc", v1.Phase_END, v1.Status_OK),       // exactly the upper edge
+	}); err != nil {
+		t.Fatalf("AppendEvents: %v", err)
+	}
+
+	const resolution = 10
+	m, err := replay.New(es, bs).Timeline(ctx, replay.TimelineQuery{
+		FromWallMS: from, ToWallMS: to, Resolution: resolution,
+	})
+	if err != nil {
+		t.Fatalf("Timeline: %v", err)
+	}
+
+	total := 0
+	for _, lane := range m.Lanes {
+		if len(lane.Buckets) != resolution {
+			t.Fatalf("lane %s has %d buckets, want exactly %d", lane.Service, len(lane.Buckets), resolution)
+		}
+		for _, b := range lane.Buckets {
+			if b.Index < 0 || b.Index >= resolution {
+				t.Fatalf("bucket index %d is out of range [0,%d)", b.Index, resolution)
+			}
+			total += b.Count
+		}
+	}
+	if total != 3 {
+		t.Fatalf("buckets account for %d events, want 3 — an event fell off a window edge", total)
+	}
+}
