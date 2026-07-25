@@ -4,13 +4,15 @@
 // cannot silently diverge.
 //
 // A note on wire shapes: the collector encodes the Timeline Model
-// (replay.TimelineModel and friends) with explicit camelCase JSON tags, but
-// raw *v1.Event values — embedded verbatim in chain nodes — go through
-// encoding/json against the protoc-gen-go structs directly, which are
-// snake_case, and the `operation` oneof serializes as a wrapper object
-// (`Operation: { HttpServer: {...} }` / `{ HttpClient: {...} }`) rather than a
-// flattened field. This file reads exactly those shapes — nothing is
-// reformatted or reinterpreted, only displayed.
+// (replay.TimelineModel and friends) with explicit camelCase JSON tags, and
+// any embedded protobuf message (*v1.Event, *v1.EventID) is marshaled with
+// protojson before being embedded in the response, so it speaks the same
+// convention: camelCase field names (`operationType`, `traceId`), and the
+// `operation` oneof flattened directly onto the event (`httpServer: {...}` /
+// `httpClient: {...}`) rather than wrapped in a Go-cased type name. protojson
+// also renders enums as their name string (e.g. `"HTTP_SERVER"`), not their
+// number. This file reads exactly those shapes — nothing is reformatted or
+// reinterpreted, only displayed.
 
 const $ = (id) => document.getElementById(id);
 
@@ -21,14 +23,14 @@ async function json(url) {
 }
 
 const OPERATION_TYPE_NAMES = {
-  0: "unspecified",
-  1: "http.server",
-  2: "http.client",
-  3: "local",
-  10: "db.query",
-  20: "cache",
-  30: "msg.produce",
-  31: "msg.consume",
+  OPERATION_TYPE_UNSPECIFIED: "unspecified",
+  HTTP_SERVER: "http.server",
+  HTTP_CLIENT: "http.client",
+  LOCAL: "local",
+  DB_QUERY: "db.query",
+  CACHE_OP: "cache",
+  MSG_PRODUCE: "msg.produce",
+  MSG_CONSUME: "msg.consume",
 };
 
 const state = {
@@ -243,7 +245,7 @@ async function loadChain(eventId) {
   if (!traceHex) {
     throw new Error("select a trace before loading its causal chain");
   }
-  const emitter = toHex(eventId.emitter_id);
+  const emitter = toHex(eventId.emitterId);
   $("status").textContent = "loading chain…";
   const chain = await json(
     `/api/chain?trace=${traceHex}&emitter=${emitter}&seq=${eventId.sequence}&max=200`
@@ -287,7 +289,7 @@ function renderChain(chain) {
     // HLC never appears here — only in the raw inspector below, opened by
     // clicking a node. Without that escape hatch an engineer who disagrees
     // with an ordering decision has no way to find out why.
-    if (!node.event.duration_nanos) {
+    if (!node.event.durationNanos) {
       const tag = document.createElement("span");
       tag.className = "tag tag--inflight";
       tag.textContent = "never ended";
@@ -314,23 +316,24 @@ function renderChain(chain) {
   }
 }
 
-// describe() reads the real wire shape of a *v1.Event: snake_case fields, and
-// the operation oneof wrapped as Operation.HttpServer / Operation.HttpClient.
+// describe() reads the real wire shape of a *v1.Event as protojson renders
+// it: camelCase fields, and the operation oneof flattened directly onto the
+// event as httpServer / httpClient.
 function describe(ev) {
   const service = ev.service?.name ?? "unknown-service";
-  const op = ev.Operation ?? {};
 
-  if (op.HttpServer) {
-    return `${service}: ${op.HttpServer.method} ${op.HttpServer.route || op.HttpServer.path}`;
+  if (ev.httpServer) {
+    return `${service}: ${ev.httpServer.method} ${ev.httpServer.route || ev.httpServer.path}`;
   }
-  if (op.HttpClient) {
-    return `${service} → ${op.HttpClient.host}${op.HttpClient.path}`;
+  if (ev.httpClient) {
+    return `${service} → ${ev.httpClient.host}${ev.httpClient.path}`;
   }
 
-  const localName = ev.attributes?.["operation.name"]?.Kind?.StringValue;
+  const localName = ev.attributes?.["operation.name"]?.stringValue;
   if (localName) return `${service}: ${localName}`;
 
-  const kind = OPERATION_TYPE_NAMES[ev.operation_type] ?? `operation type ${ev.operation_type}`;
+  const opType = ev.operationType ?? "OPERATION_TYPE_UNSPECIFIED";
+  const kind = OPERATION_TYPE_NAMES[opType] ?? `operation type ${opType}`;
   return `${service}: ${kind}`;
 }
 
