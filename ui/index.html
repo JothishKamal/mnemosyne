@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Mnemosyne — Replay</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header id="toolbar">
+    <h1>Mnemosyne <span id="app-subtitle">replay</span></h1>
+
+    <div id="toolbar-controls">
+      <label class="field">
+        <span class="field-label">from (ms)</span>
+        <input id="from" type="number" placeholder="0" inputmode="numeric">
+      </label>
+      <label class="field">
+        <span class="field-label">to (ms)</span>
+        <input id="to" type="number" placeholder="now" inputmode="numeric">
+      </label>
+      <button id="load" type="button">Load</button>
+
+      <label class="field field--trace">
+        <span class="field-label">trace</span>
+        <select id="trace" disabled>
+          <option value="">— none loaded —</option>
+        </select>
+      </label>
+    </div>
+
+    <span id="status" role="status" aria-live="polite"></span>
+  </header>
+
+  <main id="split">
+    <section id="timeline" aria-label="Timeline">
+      <div id="skew" aria-label="Clock skew warnings"></div>
+      <div id="timeline-body">
+        <div id="lanes"></div>
+        <div id="gaps" aria-label="Dropped events"></div>
+      </div>
+      <div id="inflight-panel" aria-label="In-flight operations"></div>
+    </section>
+
+    <aside id="chain-panel" aria-label="Causal chain">
+      <h2>Causal chain <span class="badge badge--recorded">recorded</span></h2>
+      <p id="chain-hint" class="hint">Select a “never ended” operation on the timeline to load its causal chain.</p>
+      <ol id="chain"></ol>
+      <section id="inspector" hidden>
+        <h3>Raw event <span class="hint">(includes HLC — not shown anywhere else)</span></h3>
+        <pre id="raw"></pre>
+      </section>
+    </aside>
+  </main>
+
+  <script src="/app.js" type="module"></script>
+</body>
+</html>

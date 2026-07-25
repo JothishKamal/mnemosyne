@@ -1,0 +1,578 @@
+/* Mnemosyne replay UI.
+ *
+ * Design system (chosen via the ui-ux-pro-max skill: "developer observability
+ * tool / dark mode / dense dashboard" query):
+ *   - Palette: API Developer Portal dark set — near-black background, code-dark
+ *     panels, semantic green for recorded fact, red for error, amber for
+ *     unresolved/in-flight, violet reserved for a future "inferred" edge type.
+ *   - Typography: system sans-serif stack (visually Inter-adjacent) for the
+ *     narrative UI; a monospace stack strictly for the raw event inspector,
+ *     where HLC and other machine detail live.
+ *   - Density: 8/10 (dashboard-dense) — a tight 4px-based spacing scale so a
+ *     long incident's lanes and a full causal chain both fit without excess
+ *     chrome.
+ *   - No web fonts, no CDN assets, no remote images: the collector serves
+ *     this page with zero network dependencies, by requirement.
+ */
+
+:root {
+  --bg: #020617;
+  --bg-elevated: #0e1223;
+  --bg-muted: #1a1e2f;
+  --bg-muted-2: #171b2c;
+  --fg: #f8fafc;
+  --fg-muted: #94a3b8;
+  --fg-faint: #64748b;
+  --border: #334155;
+  --border-soft: #26314a;
+
+  --accent: #22c55e; /* recorded fact / positive */
+  --accent-on: #05170c;
+  --danger: #ef4444; /* error / dropped events */
+  --danger-on: #2b0505;
+  --warning: #f59e0b; /* in-flight / never ended / clock skew */
+  --warning-on: #2b1a00;
+  --inferred: #a78bfa; /* reserved: a future inferred-edge treatment */
+
+  --focus-ring: #38bdf8;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-pill: 999px;
+
+  --lane-label-w: 190px;
+  --toolbar-h: 56px;
+
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas,
+    "Liberation Mono", monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  font-weight: 600;
+}
+
+button,
+input,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.hint {
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+
+/* --- toolbar ------------------------------------------------------------ */
+
+#toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  height: var(--toolbar-h);
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  padding: 0 var(--space-4);
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border);
+}
+
+#toolbar h1 {
+  font-size: 15px;
+  letter-spacing: 0.01em;
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  white-space: nowrap;
+}
+
+#app-subtitle {
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--fg-muted);
+}
+
+#toolbar-controls {
+  display: flex;
+  align-items: end;
+  gap: var(--space-3);
+  flex: 1;
+  min-width: 0;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.field-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fg-faint);
+}
+
+.field input,
+.field select {
+  background: var(--bg-muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--fg);
+  padding: 6px var(--space-2);
+  min-height: 32px;
+}
+
+.field input {
+  width: 110px;
+}
+
+.field--trace select {
+  min-width: 260px;
+  max-width: 40vw;
+}
+
+.field select:disabled {
+  color: var(--fg-faint);
+}
+
+#load {
+  min-height: 36px;
+  padding: 0 var(--space-4);
+  background: var(--accent);
+  color: var(--accent-on);
+  border: none;
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition: filter 150ms ease;
+}
+
+#load:hover {
+  filter: brightness(1.08);
+}
+
+#status {
+  font-size: 12px;
+  color: var(--fg-muted);
+  white-space: nowrap;
+}
+
+#status.status--error {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+/* --- split layout --------------------------------------------------------*/
+
+#split {
+  display: grid;
+  grid-template-columns: 1fr 400px;
+  height: calc(100vh - var(--toolbar-h));
+  min-height: 0;
+}
+
+#timeline {
+  overflow-y: auto;
+  padding: var(--space-4);
+  min-width: 0;
+}
+
+#chain-panel {
+  overflow-y: auto;
+  padding: var(--space-4);
+  border-left: 1px solid var(--border);
+  background: var(--bg-elevated);
+  min-width: 0;
+}
+
+@media (max-width: 900px) {
+  #split {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+  #chain-panel {
+    border-left: none;
+    border-top: 1px solid var(--border);
+  }
+}
+
+/* --- skew warnings -------------------------------------------------------
+ * A skewed clock is reported, never rendered as an impossible timeline: this
+ * banner replaces trust in the geometry below rather than footnoting it.
+ */
+
+#skew:not(:empty) {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+
+.skew {
+  background: color-mix(in srgb, var(--warning) 14%, var(--bg-elevated));
+  border: 1px solid color-mix(in srgb, var(--warning) 55%, var(--border));
+  border-left: 4px solid var(--warning);
+  color: var(--fg);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+}
+
+/* --- lanes ---------------------------------------------------------------*/
+
+#timeline-body {
+  position: relative;
+}
+
+#lanes {
+  display: flex;
+  flex-direction: column;
+}
+
+.lane {
+  display: grid;
+  grid-template-columns: var(--lane-label-w) 1fr;
+  align-items: center;
+  min-height: 36px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.lane--skewed {
+  background: color-mix(in srgb, var(--warning) 6%, transparent);
+  border-left: 3px solid var(--warning);
+}
+
+.lane-label {
+  padding: 0 var(--space-3);
+  font-size: 12px;
+  color: var(--fg-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lane--skewed .lane-label {
+  color: var(--warning);
+  font-weight: 600;
+}
+
+.lane-track {
+  position: relative;
+  height: 24px;
+  background: repeating-linear-gradient(
+    to right,
+    var(--bg-muted-2) 0,
+    var(--bg-muted-2) 1px,
+    transparent 1px,
+    transparent 48px
+  );
+  border-radius: var(--radius-sm);
+}
+
+.bucket {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  min-width: 2px;
+  background: var(--accent);
+  border: none;
+  border-radius: 2px;
+  padding: 0;
+  cursor: default;
+}
+
+.bucket--error {
+  background: var(--danger);
+}
+
+/* --- gap markers -----------------------------------------------------------
+ * Rendered inline, positioned over the exact wall-clock span where events
+ * were lost — never a footnote below the timeline, never a blank stretch
+ * that reads as "nothing happened".
+ */
+
+#gaps {
+  position: absolute;
+  inset: 0;
+  left: var(--lane-label-w);
+  pointer-events: none;
+}
+
+.gap {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  min-width: 3px;
+  background: repeating-linear-gradient(
+    45deg,
+    color-mix(in srgb, var(--danger) 55%, transparent) 0,
+    color-mix(in srgb, var(--danger) 55%, transparent) 6px,
+    color-mix(in srgb, var(--danger) 25%, transparent) 6px,
+    color-mix(in srgb, var(--danger) 25%, transparent) 12px
+  );
+  border-left: 2px solid var(--danger);
+  border-right: 2px solid var(--danger);
+}
+
+.gap-label {
+  position: sticky;
+  top: var(--space-1);
+  display: inline-block;
+  margin: var(--space-1);
+  padding: 2px var(--space-2);
+  background: var(--danger);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+  border-radius: var(--radius-sm);
+}
+
+/* --- in-flight / never ended ---------------------------------------------
+ * A separate, unmistakable section — not folded into the lanes — because an
+ * unmatched BEGIN is exactly what a deadlock or hung request looks like, and
+ * it must never be one visual step away from "everything completed".
+ */
+
+#inflight-panel:not(:empty) {
+  margin-top: var(--space-5);
+  padding-top: var(--space-4);
+  border-top: 1px dashed var(--border);
+}
+
+.inflight-heading {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--warning);
+  margin-bottom: var(--space-3);
+}
+
+.inflight-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.inflight {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 36px;
+  padding: var(--space-1) var(--space-3) var(--space-1) var(--space-2);
+  background: var(--bg-muted);
+  border: 1px solid color-mix(in srgb, var(--warning) 45%, var(--border));
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition: background 150ms ease, border-color 150ms ease;
+}
+
+.inflight:hover {
+  background: var(--bg-muted-2);
+  border-color: var(--warning);
+}
+
+.inflight-desc {
+  font-size: 12px;
+  color: var(--fg);
+}
+
+.tag {
+  display: inline-block;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-pill);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.tag--inflight {
+  background: var(--warning);
+  color: var(--warning-on);
+}
+
+/* --- causal chain panel ---------------------------------------------------*/
+
+#chain-panel h2 {
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.badge {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-pill);
+  border: 1px solid currentColor;
+}
+
+.badge--recorded {
+  color: var(--accent);
+}
+
+#chain-hint {
+  margin-top: var(--space-2);
+}
+
+#chain {
+  list-style: none;
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* Recorded vs. inferred edges get distinct visual language. v1 only ever
+ * renders recorded edges (a solid left border); the [data-provenance] switch
+ * and the dashed/violet "inferred" rule are established now, unused, so that
+ * adding inference later cannot quietly blur a fact with a hypothesis.
+ */
+.chain-node {
+  border-left: 3px solid var(--accent);
+  background: var(--bg-muted);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
+.chain-node[data-provenance="inferred"] {
+  border-left: 3px dashed var(--inferred);
+}
+
+.chain-node-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 44px;
+  padding: var(--space-2) var(--space-3);
+  background: transparent;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  transition: background 150ms ease;
+}
+
+.chain-node-btn:hover {
+  background: var(--bg-muted-2);
+}
+
+.chain-edge {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  color: var(--fg-faint);
+  background: var(--bg-muted-2);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  padding: 1px var(--space-1);
+  white-space: nowrap;
+}
+
+.chain-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.chain-truncated {
+  font-size: 12px;
+  font-style: italic;
+  color: var(--warning);
+  padding: var(--space-2) var(--space-3);
+  border-top: 1px dashed var(--border);
+}
+
+/* --- raw event inspector ---------------------------------------------------
+ * The only place HLC is shown. It never appears in the narrative timeline or
+ * chain — those read wall-clock and causal order — but an engineer who
+ * disagrees with an ordering decision needs a way to see the logical clock
+ * that produced it.
+ */
+
+#inspector {
+  margin-top: var(--space-5);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+
+#inspector h3 {
+  font-size: 12px;
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+#raw {
+  margin: var(--space-2) 0 0;
+  padding: var(--space-3);
+  background: var(--bg);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 40vh;
+  overflow: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+  }
+}
