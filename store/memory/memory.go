@@ -50,7 +50,7 @@ func (s *Events) TraceEvents(_ context.Context, traceID []byte) ([]*v1.Event, er
 	var out []*v1.Event
 	for _, e := range s.events {
 		if bytes.Equal(e.TraceId, traceID) {
-			out = append(out, e)
+			out = append(out, proto.Clone(e).(*v1.Event))
 		}
 	}
 	sortByHLC(out)
@@ -75,7 +75,7 @@ func (s *Events) Window(_ context.Context, q store.WindowQuery) ([]*v1.Event, er
 		if len(svc) > 0 && !svc[e.GetService().GetName()] {
 			continue
 		}
-		out = append(out, e)
+		out = append(out, proto.Clone(e).(*v1.Event))
 	}
 	sortByHLC(out)
 	if q.Limit > 0 && len(out) > q.Limit {
@@ -92,7 +92,7 @@ func (s *Events) Gaps(_ context.Context, from, to uint64) ([]*v1.Gap, error) {
 		if g.GetTo().GetWallMs() < from || g.GetFrom().GetWallMs() > to {
 			continue
 		}
-		out = append(out, g)
+		out = append(out, proto.Clone(g).(*v1.Gap))
 	}
 	return out, nil
 }
@@ -101,7 +101,14 @@ func (s *Events) Traces(_ context.Context, q store.TraceQuery) ([]store.TraceSum
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	byTrace := map[string]*store.TraceSummary{}
+	// traceAcc tracks the running summary for a trace plus the earliest event
+	// seen so far (by HLC), which supplies the root fields.
+	type traceAcc struct {
+		summary store.TraceSummary
+		root    *v1.Event
+	}
+
+	byTrace := map[string]*traceAcc{}
 	for _, e := range s.events {
 		w := e.GetHlc().GetWallMs()
 		if w < q.FromWallMS || w > q.ToWallMS {
@@ -111,37 +118,47 @@ func (s *Events) Traces(_ context.Context, q store.TraceQuery) ([]store.TraceSum
 			continue
 		}
 		key := string(e.TraceId)
-		sum, ok := byTrace[key]
+		acc, ok := byTrace[key]
 		if !ok {
-			sum = &store.TraceSummary{
+			acc = &traceAcc{summary: store.TraceSummary{
 				TraceID:     append([]byte(nil), e.TraceId...),
-				RootService: e.GetService().GetName(),
-				RootRoute:   e.GetHttpServer().GetRoute(),
 				StartWallMS: w,
 				EndWallMS:   w,
-			}
-			byTrace[key] = sum
+			}}
+			byTrace[key] = acc
 		}
-		sum.EventCount++
-		if w < sum.StartWallMS {
-			sum.StartWallMS = w
+		if acc.root == nil || hlcLess(e, acc.root) {
+			acc.root = e
 		}
-		if w > sum.EndWallMS {
-			sum.EndWallMS = w
+		acc.summary.EventCount++
+		if w < acc.summary.StartWallMS {
+			acc.summary.StartWallMS = w
+		}
+		if w > acc.summary.EndWallMS {
+			acc.summary.EndWallMS = w
 		}
 		if e.Status == v1.Status_ERROR || e.Status == v1.Status_TIMEOUT {
-			sum.HasError = true
+			acc.summary.HasError = true
 		}
 	}
 
 	out := make([]store.TraceSummary, 0, len(byTrace))
-	for _, sum := range byTrace {
-		if q.OnlyErrors && !sum.HasError {
+	for _, acc := range byTrace {
+		if q.OnlyErrors && !acc.summary.HasError {
 			continue
 		}
-		out = append(out, *sum)
+		acc.summary.RootService = acc.root.GetService().GetName()
+		acc.summary.RootRoute = acc.root.GetHttpServer().GetRoute()
+		out = append(out, acc.summary)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].StartWallMS < out[j].StartWallMS })
+	// Ordered by StartWallMS, then by TraceID bytes as a deterministic
+	// tie-break (see store.EventStore.Traces).
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].StartWallMS != out[j].StartWallMS {
+			return out[i].StartWallMS < out[j].StartWallMS
+		}
+		return bytes.Compare(out[i].TraceID, out[j].TraceID) < 0
+	})
 	if q.Limit > 0 && len(out) > q.Limit {
 		out = out[:q.Limit]
 	}
@@ -150,19 +167,23 @@ func (s *Events) Traces(_ context.Context, q store.TraceQuery) ([]store.TraceSum
 
 func (s *Events) Close() error { return nil }
 
+// hlcLess reports whether a sorts before b under (wall_ms, logical,
+// emitter_id). Wall clock is never consulted.
+func hlcLess(a, b *v1.Event) bool {
+	ah, bh := a.GetHlc(), b.GetHlc()
+	if ah.GetWallMs() != bh.GetWallMs() {
+		return ah.GetWallMs() < bh.GetWallMs()
+	}
+	if ah.GetLogical() != bh.GetLogical() {
+		return ah.GetLogical() < bh.GetLogical()
+	}
+	return bytes.Compare(a.GetId().GetEmitterId(), b.GetId().GetEmitterId()) < 0
+}
+
 // sortByHLC orders events by (wall_ms, logical, emitter_id). Wall clock is
 // never consulted.
 func sortByHLC(e []*v1.Event) {
-	sort.SliceStable(e, func(i, j int) bool {
-		a, b := e[i].GetHlc(), e[j].GetHlc()
-		if a.GetWallMs() != b.GetWallMs() {
-			return a.GetWallMs() < b.GetWallMs()
-		}
-		if a.GetLogical() != b.GetLogical() {
-			return a.GetLogical() < b.GetLogical()
-		}
-		return bytes.Compare(e[i].GetId().GetEmitterId(), e[j].GetId().GetEmitterId()) < 0
-	})
+	sort.SliceStable(e, func(i, j int) bool { return hlcLess(e[i], e[j]) })
 }
 
 // Blobs is an in-memory content-addressed BlobStore.

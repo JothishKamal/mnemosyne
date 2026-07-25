@@ -29,6 +29,10 @@ type TraceQuery struct {
 }
 
 // TraceSummary is a trace as it appears in a search result.
+//
+// RootService and RootRoute are the service and route of the trace's
+// earliest event by (hlc.wall_ms, hlc.logical, id.emitter_id) — not
+// necessarily the first event a backend happens to encounter while scanning.
 type TraceSummary struct {
 	TraceID     []byte
 	RootService string
@@ -47,6 +51,8 @@ type EventStore interface {
 	TraceEvents(ctx context.Context, traceID []byte) ([]*v1.Event, error)
 	Window(ctx context.Context, q WindowQuery) ([]*v1.Event, error)
 	Gaps(ctx context.Context, fromWallMS, toWallMS uint64) ([]*v1.Gap, error)
+	// Traces returns trace summaries ordered by StartWallMS, then by
+	// TraceID bytes as a deterministic tie-break.
 	Traces(ctx context.Context, q TraceQuery) ([]TraceSummary, error)
 	Close() error
 }
@@ -59,6 +65,8 @@ type EventStore interface {
 type BlobStore interface {
 	Put(ctx context.Context, sha [32]byte, body []byte) (string, error)
 	Get(ctx context.Context, blobID string) ([]byte, error)
+	// Has reports which of shas are missing from the store — its return
+	// value is the absent subset, not the present one.
 	Has(ctx context.Context, shas [][32]byte) ([][32]byte, error)
 	IDFor(sha [32]byte) string
 	Close() error
