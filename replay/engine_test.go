@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"testing"
 
-	v1 "github.com/jothishkamal/mnemosyne/schema/gen/go/mnemosyne/v1"
 	"github.com/jothishkamal/mnemosyne/replay"
+	v1 "github.com/jothishkamal/mnemosyne/schema/gen/go/mnemosyne/v1"
 	"github.com/jothishkamal/mnemosyne/store/memory"
 )
 
@@ -183,9 +183,9 @@ func TestEventsAtWindowEdgesAreCounted(t *testing.T) {
 
 	const from, to = 1000, 2000
 	if err := es.AppendEvents(ctx, []*v1.Event{
-		synth(1, from, "svc", v1.Phase_END, v1.Status_OK),     // exactly the lower edge
+		synth(1, from, "svc", v1.Phase_END, v1.Status_OK),        // exactly the lower edge
 		synth(2, (from+to)/2, "svc", v1.Phase_END, v1.Status_OK), // middle
-		synth(3, to, "svc", v1.Phase_END, v1.Status_OK),       // exactly the upper edge
+		synth(3, to, "svc", v1.Phase_END, v1.Status_OK),          // exactly the upper edge
 	}); err != nil {
 		t.Fatalf("AppendEvents: %v", err)
 	}

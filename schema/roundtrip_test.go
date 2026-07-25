@@ -61,9 +61,9 @@ func httpClientEvent() *v1.Event {
 			Event:         &v1.EventID{EmitterId: make([]byte, 8), Sequence: 5},
 			ForeignSpanId: make([]byte, 8),
 		}},
-		Request:             &v1.PayloadRef{Sha256: make([]byte, 32), Size: 256, Truncated: false, Redacted: false, Stored: true},
-		Response:            &v1.PayloadRef{Sha256: make([]byte, 32), Size: 512, Truncated: true, Redacted: false, Stored: true},
-		Completeness:        v1.Completeness_FULL,
+		Request:      &v1.PayloadRef{Sha256: make([]byte, 32), Size: 256, Truncated: false, Redacted: false, Stored: true},
+		Response:     &v1.PayloadRef{Sha256: make([]byte, 32), Size: 512, Truncated: true, Redacted: false, Stored: true},
+		Completeness: v1.Completeness_FULL,
 		Attributes: map[string]*v1.Value{
 			"http.response.time": {Kind: &v1.Value_IntValue{IntValue: 42}},
 			"cache.size":         {Kind: &v1.Value_DoubleValue{DoubleValue: 3.14}},
