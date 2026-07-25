@@ -11,7 +11,7 @@
 ## Global Constraints
 
 - **Module path:** `github.com/jothishkamal/mnemosyne`. This is a placeholder derived from the user's email domain — change it before first push via `go mod edit -module <path>` plus a find/replace on imports.
-- **Go version floor:** 1.24. `go.mod` declares `go 1.24`.
+- **Go version floor:** 1.25. `go.mod` declares `go 1.25.0`. Originally 1.24, raised in Task 12: `modernc.org/sqlite` requires Go 1.25 in **every** published version (checked back to v1.49.0), and it is the pure-Go driver the `CGO_ENABLED=0` constraint depends on. Holding 1.24 would mean either abandoning cgo-free builds or pinning a driver too old to receive fixes; raising the floor is the lesser cost.
 - **32-bit safety (`windows/386`):** never use `atomic.AddUint64`/`atomic.LoadUint64` on a struct field. Use the `atomic.Uint64` *type*, which carries its own 8-byte alignment guarantee. The HLC uses a mutex, not atomics.
 - **No cgo.** `CGO_ENABLED=0` must build every package. This is why SQLite is `modernc.org/sqlite`.
 - **Package naming:** adapter packages are prefixed (`mnemohttp`), never named after the library they instrument.
@@ -5195,7 +5195,7 @@ git commit -m "test(harness): add deterministic incident harness and acceptance 
 
 **Definition of done:** `go test ./replay/ -race` is green, including a test that feeds 100,000 synthetic events at `Resolution: 200` and asserts no lane exceeds 200 buckets.
 
-**Risks:** Bucketing arithmetic that is off by one at window edges silently drops the first or last event of an incident — which is often the interesting one. The bucketing test asserts on total counts, not just bucket length, so a dropped event fails the test.
+**Risks:** Bucketing arithmetic that is off by one at window edges silently drops the first or last event of an incident — which is often the interesting one, and an index past the last bucket panics the engine outright. `TestBucketCountIsBoundedByResolution` asserts total counts rather than only bucket length, but its events stop one millisecond short of `ToWallMS`, so it cannot exercise the clamp at all. `TestEventsAtWindowEdgesAreCounted` places events at exactly `FromWallMS` and exactly `ToWallMS` and is the test that actually covers the boundary — verified to panic without the clamp.
 
 - [ ] **Step 1: Write the model types**
 
