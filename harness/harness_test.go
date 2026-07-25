@@ -216,3 +216,61 @@ func TestScenarioIsDeterministic(t *testing.T) {
 		}
 	}
 }
+
+// TestRetryAttemptsAreSiblingsNotAChain is the assertion the edge-count checks
+// cannot make. Counting RETRY_OF edges proves attempts were linked; it says
+// nothing about whether they were linked as siblings under one scope or nested
+// into a chain. Nesting would assert that attempt N happened *inside* attempt
+// N-1, which is false — they are successive tries of the same call — and it is
+// exactly the degeneration the SDK's scope invariant exists to prevent.
+func TestRetryAttemptsAreSiblingsNotAChain(t *testing.T) {
+	sk := &sink{}
+	h := harness.AcceptanceScenario(t, sk)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		if resp, err := h.Run("checkout-api", "/checkout"); err == nil {
+			resp.Body.Close()
+		}
+	}()
+	waitForHang(t, sk)
+	h.Close()
+	<-done
+
+	// Collect every event that carries a RETRY_OF link, plus the attempt it
+	// links back to. All of them must share one parent.
+	ends := map[uint64]*v1.Event{}
+	for _, e := range sk.all() {
+		if e.Phase == v1.Phase_END {
+			ends[e.Id.Sequence] = e
+		}
+	}
+
+	parents := map[uint64]bool{}
+	var attempts int
+	for _, e := range ends {
+		var isRetry bool
+		for _, l := range e.Links {
+			if l.Type != v1.EdgeType_RETRY_OF {
+				continue
+			}
+			isRetry = true
+			// The attempt being retried must share this attempt's parent.
+			if prev := ends[l.Event.GetSequence()]; prev != nil {
+				parents[prev.GetParent().GetSequence()] = true
+			}
+		}
+		if isRetry {
+			attempts++
+			parents[e.GetParent().GetSequence()] = true
+		}
+	}
+
+	if attempts == 0 {
+		t.Fatal("no retry attempts recorded; the scenario did not produce a retry storm")
+	}
+	if len(parents) != 1 {
+		t.Fatalf("retry attempts span %d distinct parents, want exactly 1: they were nested into a chain rather than recorded as siblings", len(parents))
+	}
+}
