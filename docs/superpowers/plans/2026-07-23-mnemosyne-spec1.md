@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build the Mnemosyne walking skeleton — record an HTTP-only distributed trace as a causal event DAG across three Go services, and render it as a scrubbed replay timeline with a causal chain panel.
+**Goal:** Build the Mnemosyne walking skeleton, record an HTTP-only distributed trace as a causal event DAG across three Go services, and render it as a scrubbed replay timeline with a causal chain panel.
 
 **Architecture:** A Go SDK records events into a per-trace ring buffer ordered by hybrid logical clocks, propagates causality over W3C `traceparent`/`tracestate`, and exports to a single-binary collector backed by pluggable `EventStore` + `BlobStore`. A server-side replay engine materializes a Timeline Model that both the UI and a future CLI consume. Full design: `docs/superpowers/specs/2026-07-23-mnemosyne-design.md` (frozen).
 
@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- **Module path:** `github.com/jothishkamal/mnemosyne`. This is a placeholder derived from the user's email domain — change it before first push via `go mod edit -module <path>` plus a find/replace on imports.
+- **Module path:** `github.com/jothishkamal/mnemosyne`. This is a placeholder derived from the user's email domain, change it before first push via `go mod edit -module <path>` plus a find/replace on imports.
 - **Go version floor:** 1.25. `go.mod` declares `go 1.25.0`. Originally 1.24, raised in Task 12: `modernc.org/sqlite` requires Go 1.25 in **every** published version (checked back to v1.49.0), and it is the pure-Go driver the `CGO_ENABLED=0` constraint depends on. Holding 1.24 would mean either abandoning cgo-free builds or pinning a driver too old to receive fixes; raising the floor is the lesser cost.
 - **32-bit safety (`windows/386`):** never use `atomic.AddUint64`/`atomic.LoadUint64` on a struct field. Use the `atomic.Uint64` *type*, which carries its own 8-byte alignment guarantee. The HLC uses a mutex, not atomics.
 - **No cgo.** `CGO_ENABLED=0` must build every package. This is why SQLite is `modernc.org/sqlite`.
@@ -20,8 +20,8 @@
 - **Redaction happens before the ring buffer.** Unredacted payloads must never reach the exporter.
 - **The SDK never blocks the application and never grows unbounded.** Recording is what gets sacrificed.
 - **Commit after every task.** No `Co-Authored-By` trailers.
-- **Race detection requires an explicit environment.** This machine's Go toolchain is `windows/386`, which the race detector does not support: `go test -race` prints `-race is not supported on windows/386` and **exits 2 without running the tests**. It fails loudly, so it cannot produce a false green — but every `-race` command the plan originally specified was impossible to satisfy on the default arch, meaning those steps could never have been completed as written. Always invoke race runs as `GOARCH=amd64 CGO_ENABLED=1 go test ... -race`, which works because the CPU is x64 and a mingw64 C toolchain is installed. Non-race runs stay `CGO_ENABLED=0`.
-- **Conventional Commits are mandatory** for every commit: `type(scope): subject`, imperative mood, lowercase subject, no trailing period. Types in use: `feat`, `fix`, `test`, `chore`, `docs`, `refactor`. Each task's commit step gives the exact message to use — use it verbatim.
+- **Race detection requires an explicit environment.** This machine's Go toolchain is `windows/386`, which the race detector does not support: `go test -race` prints `-race is not supported on windows/386` and **exits 2 without running the tests**. It fails loudly, so it cannot produce a false green, but every `-race` command the plan originally specified was impossible to satisfy on the default arch, meaning those steps could never have been completed as written. Always invoke race runs as `GOARCH=amd64 CGO_ENABLED=1 go test ... -race`, which works because the CPU is x64 and a mingw64 C toolchain is installed. Non-race runs stay `CGO_ENABLED=0`.
+- **Conventional Commits are mandatory** for every commit: `type(scope): subject`, imperative mood, lowercase subject, no trailing period. Types in use: `feat`, `fix`, `test`, `chore`, `docs`, `refactor`. Each task's commit step gives the exact message to use, use it verbatim.
 - **One branch per task**, named `task-NN-<slug>`, developed in its own git worktree and merged to `main` only via a reviewed pull request. Never commit directly to `main`.
 
 ## Deviations from the frozen spec
@@ -46,7 +46,7 @@ Both are slice decisions, not design changes. Flagged here so they are visible r
 | `sdk/recorder.go` | `Recorder`, `Handle`, event construction. |
 | `sdk/capture/` | Ring buffer, redaction, triggers, retroactive flush. |
 | `sdk/exporter/` | Batching HTTP client. |
-| `sdk/instrument/nethttp/` | `package mnemohttp` — server middleware, client RoundTripper. |
+| `sdk/instrument/nethttp/` | `package mnemohttp`, server middleware, client RoundTripper. |
 | `store/store.go` | `EventStore` + `BlobStore` interfaces. |
 | `store/memory/`, `store/sqlite/`, `store/blobfs/` | Implementations. |
 | `collector/ingest/`, `collector/query/`, `collector/api/` | Collector internals. |
@@ -66,7 +66,7 @@ Both are slice decisions, not design changes. Flagged here so they are visible r
 
 **Definition of done:** `go run ./cmd/mnemodev -version` prints a version string and exits 0.
 
-**Risks:** Low. The only real risk is a wrong module path propagating into every import — fix it now, not later.
+**Risks:** Low. The only real risk is a wrong module path propagating into every import, fix it now, not later.
 
 - [ ] **Step 1: Initialize the module and install codegen tools**
 
@@ -78,7 +78,7 @@ go tool protoc-gen-go --version
 
 Expected: `protoc-gen-go v1.36.x` or later, and a `tool` directive in `go.mod`.
 
-Go 1.24 tracks executable dependencies with `tool` directives rather than the pre-1.24 `tools.go` blank-import idiom. This pins the generator's version in `go.mod` and `go.sum`, so every contributor and CI run generates identical bindings — which matters because `schema/gen/go` is committed.
+Go 1.24 tracks executable dependencies with `tool` directives rather than the pre-1.24 `tools.go` blank-import idiom. This pins the generator's version in `go.mod` and `go.sum`, so every contributor and CI run generates identical bindings, which matters because `schema/gen/go` is committed.
 
 - [ ] **Step 2: Write the failing test**
 
@@ -100,7 +100,7 @@ func TestVersionString(t *testing.T) {
 - [ ] **Step 3: Run it to verify it fails**
 
 Run: `go test ./cmd/mnemodev/`
-Expected: FAIL — `undefined: versionString`
+Expected: FAIL, `undefined: versionString`
 
 - [ ] **Step 4: Write the minimal implementation**
 
@@ -185,7 +185,7 @@ git commit -m "chore: scaffold module and mnemodev developer harness"
 
 **Invariants:** Field numbers and enum values match the frozen spec exactly. `EdgeType` reserves 5–15. Generated code is never hand-edited.
 
-**Tests:** A round-trip test — marshal an `Event` with every field populated, unmarshal, compare with `proto.Equal`.
+**Tests:** A round-trip test, marshal an `Event` with every field populated, unmarshal, compare with `proto.Equal`.
 
 **Definition of done:** `go run ./cmd/mnemodev -demo-event` prints a populated event as indented JSON.
 
@@ -569,14 +569,14 @@ git commit -m "feat(schema): add frozen v1 protobuf schema and event JSON printi
 
 **Invariants:**
 1. `Now()` is strictly increasing under `Less` on a single clock, even if the physical clock goes backwards.
-2. If A happens-before B — same process, or B's clock called `Observe(A.hlc)` — then `A.Less(B)`.
+2. If A happens-before B, same process, or B's clock called `Observe(A.hlc)`, then `A.Less(B)`.
 3. `Observe` never regresses local state.
 
 **Tests:** Three unit tests (monotonic under a frozen clock, monotonic under a *backwards* clock, `Observe` dominates a remote timestamp) plus one `rapid` property test over randomized send/receive interleavings across N simulated processes.
 
 **Definition of done:** The property test passes with 1000 randomized interleavings across 5 processes, asserting no happens-before edge is ever contradicted by HLC order.
 
-**Risks:** This is the highest-risk component in Spec 1 alongside Task 4. A subtly wrong `Observe` produces an ordering that is *usually* right, which means bugs surface as rare, unreproducible timeline weirdness in production. The property test is the mitigation and must be written first. Second risk: using atomics on `windows/386` — avoided by using a mutex, which is also simpler to reason about here.
+**Risks:** This is the highest-risk component in Spec 1 alongside Task 4. A subtly wrong `Observe` produces an ordering that is *usually* right, which means bugs surface as rare, unreproducible timeline weirdness in production. The property test is the mitigation and must be written first. Second risk: using atomics on `windows/386`, avoided by using a mutex, which is also simpler to reason about here.
 
 - [ ] **Step 1: Add the property-test dependency**
 
@@ -655,7 +655,7 @@ func TestObserveNeverRegressesLocalState(t *testing.T) {
 - [ ] **Step 3: Run to verify failure**
 
 Run: `go test ./sdk/hlc/`
-Expected: build failure — `no required module provides package .../sdk/hlc`
+Expected: build failure, `no required module provides package .../sdk/hlc`
 
 - [ ] **Step 4: Write the implementation**
 
@@ -760,7 +760,7 @@ func (c *Clock) Observe(remote Timestamp) Timestamp {
 
 // bump returns the timestamp one logical step past baseLogical at wall,
 // carrying into the wall component when the logical counter would overflow.
-// Overflow requires 2^32 events within a single wall-millisecond — a stalled
+// Overflow requires 2^32 events within a single wall-millisecond, a stalled
 // physical clock under sustained load. Carrying preserves strict monotonicity;
 // wrapping to zero at the same wall time would violate it, silently, in the one
 // place the whole system's ordering rests.
@@ -775,7 +775,7 @@ func bump(wall uint64, baseLogical uint32) Timestamp {
 - [ ] **Step 5: Run the unit tests**
 
 Run: `go test ./sdk/hlc/ -v`
-Expected: PASS — all four tests.
+Expected: PASS, all four tests.
 
 - [ ] **Step 6: Write the property test**
 
@@ -860,7 +860,7 @@ Expected: PASS with `[rapid] OK, passed 1000 tests`.
 - [ ] **Step 8: Add the logical-overflow test**
 
 Create `sdk/hlc/overflow_test.go` as a white-box test (package `hlc`, so it can
-reach `bump` and seed `last` — the boundary is 2^32 ties, unreachable through the
+reach `bump` and seed `last`, the boundary is 2^32 ties, unreachable through the
 public API):
 
 ```go
@@ -934,7 +934,7 @@ git commit -m "feat(sdk): add hybrid logical clock with happens-before property 
 
 **Invariants:**
 1. `NextEvent()` is strictly monotonic per generator and unique across generators (distinct random emitter IDs).
-2. A `tracestate` value never exceeds 256 characters — the W3C per-entry limit.
+2. A `tracestate` value never exceeds 256 characters, the W3C per-entry limit.
 3. `DecodeTracestate(EncodeTracestate(x)) == x` for all inputs.
 4. On `windows/386`, the sequence counter must be `atomic.Uint64` (the type), never `atomic.AddUint64` on a field.
 
@@ -1036,7 +1036,7 @@ func TestConcurrentNextEventProducesNoDuplicates(t *testing.T) {
 - [ ] **Step 2: Run to verify failure**
 
 Run: `go test ./sdk/identity/`
-Expected: build failure — package does not exist.
+Expected: build failure, package does not exist.
 
 - [ ] **Step 3: Write the identity implementation**
 
@@ -1124,7 +1124,7 @@ func (g *Generator) NewSpan() (SpanID, error) {
 - [ ] **Step 4: Run the identity tests**
 
 Run: `GOARCH=amd64 CGO_ENABLED=1 go test ./sdk/identity/ -race -v`
-Expected: PASS — all four tests.
+Expected: PASS, all four tests.
 
 - [ ] **Step 5: Write the failing propagation-codec tests**
 
@@ -1214,7 +1214,7 @@ func TestParseTraceparentRejectsMalformed(t *testing.T) {
 - [ ] **Step 6: Run to verify failure**
 
 Run: `go test ./sdk/identity/ -run Tracestate`
-Expected: FAIL — `undefined: identity.EncodeTracestate`
+Expected: FAIL, `undefined: identity.EncodeTracestate`
 
 - [ ] **Step 7: Write the propagation codec**
 
@@ -1336,7 +1336,7 @@ func ParseTraceparent(v string) (TraceID, SpanID, bool) {
 - [ ] **Step 8: Run the full identity suite**
 
 Run: `GOARCH=amd64 CGO_ENABLED=1 go test ./sdk/identity/ -race -rapid.checks=1000 -v`
-Expected: PASS — all tests, including the round-trip property test at 1000 checks.
+Expected: PASS, all tests, including the round-trip property test at 1000 checks.
 
 - [ ] **Step 9: Commit**
 
@@ -1349,7 +1349,7 @@ git commit -m "feat(sdk): add identity generation and W3C propagation codec"
 
 ## Task 4: Recorder, Handle, and mnemoctx
 
-**Objective:** The scope invariant holds structurally, not by discipline — sibling operations are siblings and nested operations are nested, under arbitrary nesting.
+**Objective:** The scope invariant holds structurally, not by discipline, sibling operations are siblings and nested operations are nested, under arbitrary nesting.
 
 **Deliverables:** `sdk/mnemoctx/mnemoctx.go`, `sdk/recorder.go`, `sdk/operation.go`, tests for each.
 
@@ -1423,7 +1423,7 @@ func TestWithDoesNotMutateParentContext(t *testing.T) {
 - [ ] **Step 2: Run to verify failure**
 
 Run: `go test ./sdk/mnemoctx/`
-Expected: build failure — package does not exist.
+Expected: build failure, package does not exist.
 
 - [ ] **Step 3: Write mnemoctx**
 
@@ -1472,7 +1472,7 @@ func From(ctx context.Context) (Scope, bool) {
 - [ ] **Step 4: Run the mnemoctx tests**
 
 Run: `go test ./sdk/mnemoctx/ -v`
-Expected: PASS — both tests.
+Expected: PASS, both tests.
 
 - [ ] **Step 5: Write the operation types**
 
@@ -1626,7 +1626,7 @@ func TestSequentialOperationsAreSiblings(t *testing.T) {
 		t.Fatalf("a.parent = %d, want root %d", ea.Parent.Sequence, root.ID().Sequence)
 	}
 	if eb.Parent.Sequence != root.ID().Sequence {
-		t.Fatalf("b.parent = %d, want root %d (b was made a child of a — the linked-list bug)",
+		t.Fatalf("b.parent = %d, want root %d (b was made a child of a, the linked-list bug)",
 			eb.Parent.Sequence, root.ID().Sequence)
 	}
 }
@@ -1742,7 +1742,7 @@ func TestForeignRemoteParentBecomesLinkNotParent(t *testing.T) {
 - [ ] **Step 7: Run to verify failure**
 
 Run: `go test ./sdk/`
-Expected: build failure — `undefined: sdk.New`
+Expected: build failure, `undefined: sdk.New`
 
 - [ ] **Step 8: Write the Recorder and Handle**
 
@@ -2070,7 +2070,7 @@ func errorType(err error) string {
 - [ ] **Step 9: Run the suite**
 
 Run: `GOARCH=amd64 CGO_ENABLED=1 go test ./sdk/... -race -v`
-Expected: PASS — all recorder and mnemoctx tests.
+Expected: PASS, all recorder and mnemoctx tests.
 
 - [ ] **Step 10: Write the scope-invariant property test**
 
@@ -2091,7 +2091,7 @@ import (
 
 // TestScopeInvariantUnderRandomizedNesting builds arbitrary nesting trees and
 // asserts that every emitted event's parent is exactly its lexically enclosing
-// scope — the invariant the whole causal model rests on.
+// scope, the invariant the whole causal model rests on.
 func TestScopeInvariantUnderRandomizedNesting(t *testing.T) {
 	rapid.Check(t, func(rt *rapid.T) {
 		rec, sink := newTestRecorderRapid(rt)
@@ -2172,7 +2172,7 @@ git commit -m "feat(sdk): add Recorder, Handle, and mnemoctx with scope invarian
 
 ---
 
-## Task 5: Capture engine — ring buffer, redaction, triggers
+## Task 5: Capture engine, ring buffer, redaction, triggers
 
 **Objective:** Payloads are captured retroactively: recorded into a bounded per-trace ring, redacted on the way in, and flushed only when a trigger fires.
 
@@ -2182,7 +2182,7 @@ git commit -m "feat(sdk): add Recorder, Handle, and mnemoctx with scope invarian
 - Consumes: `identity.TraceID`, `identity.EventID`, `v1.PayloadRef`.
 - Produces:
   - `capture.Level` (`LevelOff`, `LevelMetadata`, `LevelFull`)
-  - `capture.Policy{Default Level; MaxBytesPerTrace int; MaxTraces int; MaxPayloadBytes int; Redact Redact}` — per-route resolution is on the deferred list and is added with the code that consumes it
+  - `capture.Policy{Default Level; MaxBytesPerTrace int; MaxTraces int; MaxPayloadBytes int; Redact Redact}`, per-route resolution is on the deferred list and is added with the code that consumes it
   - `capture.Redact{Headers []string; JSONKeys []string}`, `(Redact).Body([]byte) ([]byte, bool)`, `(Redact).HeaderValue(name, value string) (string, bool)`
   - `capture.NewEngine(Policy) *Engine`
   - `(*Engine).Record(tr identity.TraceID, ev identity.EventID, kind Kind, body []byte) *v1.PayloadRef`
@@ -2192,17 +2192,17 @@ git commit -m "feat(sdk): add Recorder, Handle, and mnemoctx with scope invarian
   - `sdk.Config.Capture *capture.Engine`, `(*Handle).RecordRequest([]byte)`, `(*Handle).RecordResponse([]byte)`, `(*Recorder).FlushTrace(identity.TraceID) []capture.Blob`
 
 **Invariants:**
-1. A `PayloadRef` is produced for every payload — `sha256` and `size` are always populated, even when `stored` is false.
+1. A `PayloadRef` is produced for every payload, `sha256` and `size` are always populated, even when `stored` is false.
 2. Redaction runs before anything enters the ring. A denied header name or JSON key must never appear in ring bytes.
 3. The ring respects both `MaxBytesPerTrace` and `MaxTraces`; eviction is LRU by trace and increments the dropped counter.
 4. `Flush` returns and removes a trace's payloads; a second `Flush` of the same trace returns nothing.
-5. Ring memory is bounded regardless of traffic — the SDK never grows unbounded.
+5. Ring memory is bounded regardless of traffic, the SDK never grows unbounded.
 
 **Tests:** Redaction over bytes (not structs), ring eviction under both bounds, `PayloadRef` populated when not stored, flush-then-reflush, and a `rapid` property test asserting total ring bytes never exceed `MaxBytesPerTrace * MaxTraces`.
 
 **Definition of done:** `GOARCH=amd64 CGO_ENABLED=1 go test ./sdk/capture/ -race -rapid.checks=1000` is green, including the bounded-memory property test and a redaction test that greps the raw ring bytes for the secret.
 
-**Risks:** The bounded-memory guarantee is the load-bearing claim — a leak here takes down the instrumented application, which is far worse than losing a recording. The property test asserts the bound directly rather than trusting the eviction logic. Second risk: redaction that operates on parsed structures rather than emitted bytes can miss a value that survives re-serialization; the test asserts over bytes for exactly that reason.
+**Risks:** The bounded-memory guarantee is the load-bearing claim, a leak here takes down the instrumented application, which is far worse than losing a recording. The property test asserts the bound directly rather than trusting the eviction logic. Second risk: redaction that operates on parsed structures rather than emitted bytes can miss a value that survives re-serialization; the test asserts over bytes for exactly that reason.
 
 - [ ] **Step 1: Write the failing redaction test**
 
@@ -2277,7 +2277,7 @@ func TestHeaderRedactionIsCaseInsensitive(t *testing.T) {
 - [ ] **Step 2: Run to verify failure**
 
 Run: `go test ./sdk/capture/`
-Expected: build failure — package does not exist.
+Expected: build failure, package does not exist.
 
 - [ ] **Step 3: Write the redactor**
 
@@ -2377,7 +2377,7 @@ func scrub(v any, deny map[string]struct{}) (any, bool) {
 - [ ] **Step 4: Run the redaction tests**
 
 Run: `go test ./sdk/capture/ -v`
-Expected: PASS — all four redaction tests.
+Expected: PASS, all four redaction tests.
 
 - [ ] **Step 5: Write the failing ring and engine tests**
 
@@ -2527,7 +2527,7 @@ func TestRingMemoryIsAlwaysBounded(t *testing.T) {
 - [ ] **Step 6: Run to verify failure**
 
 Run: `go test ./sdk/capture/ -run TestPayloadRef`
-Expected: FAIL — `undefined: capture.NewEngine`
+Expected: FAIL, `undefined: capture.NewEngine`
 
 - [ ] **Step 7: Write the capture engine**
 
@@ -2734,11 +2734,11 @@ func (e *Engine) BufferedTraces() int {
 - [ ] **Step 8: Run the capture suite**
 
 Run: `GOARCH=amd64 CGO_ENABLED=1 go test ./sdk/capture/ -race -rapid.checks=1000 -v`
-Expected: PASS — all tests including `TestRingMemoryIsAlwaysBounded`.
+Expected: PASS, all tests including `TestRingMemoryIsAlwaysBounded`.
 
 - [ ] **Step 9: Wire payload capture into the Handle**
 
-Add to `sdk/recorder.go` — extend `Config` and `Recorder` with a capture engine, add payload fields to `Handle`, and populate refs at `End`:
+Add to `sdk/recorder.go`, extend `Config` and `Recorder` with a capture engine, add payload fields to `Handle`, and populate refs at `End`:
 
 ```go
 // In Config, add:
@@ -2842,7 +2842,7 @@ Add `"github.com/jothishkamal/mnemosyne/sdk/capture"` to the test imports.
 - [ ] **Step 11: Run the full SDK suite**
 
 Run: `GOARCH=amd64 CGO_ENABLED=1 go test ./sdk/... -race`
-Expected: PASS — every package.
+Expected: PASS, every package.
 
 - [ ] **Step 12: Commit**
 
@@ -2869,9 +2869,9 @@ git commit -m "feat(sdk): add capture engine with bounded rings and retroactive 
 
 **Invariants:**
 1. A request carrying a valid `traceparent` continues that trace; one without mints a new trace.
-2. Inbound context minted by a non-Mnemosyne participant — `traceparent` present, `mnemo` `tracestate` entry absent — is treated as foreign: correlation only, `REMOTE_CALL` link with `foreign_span_id`, no parent edge.
+2. Inbound context minted by a non-Mnemosyne participant, `traceparent` present, `mnemo` `tracestate` entry absent, is treated as foreign: correlation only, `REMOTE_CALL` link with `foreign_span_id`, no parent edge.
 3. The client `RoundTripper` injects both `traceparent` and the `mnemo` `tracestate` entry, preserving any other vendors' `tracestate` entries.
-4. A response carrying `Mnemosyne-Capture: 1` causes the caller to flush its own trace payloads — backward trigger propagation.
+4. A response carrying `Mnemosyne-Capture: 1` causes the caller to flush its own trace payloads, backward trigger propagation.
 5. The middleware never panics the wrapped handler. A panic in recording is recovered and dropped.
 6. `sdk/` imports no instrumented library. Enforced by test.
 
@@ -2879,7 +2879,7 @@ git commit -m "feat(sdk): add capture engine with bounded rings and retroactive 
 
 **Definition of done:** A test spins up two `httptest` servers wired with `mnemohttp`, issues one request, and asserts the resulting events form a single trace with a `REMOTE_CALL` edge from client to server and correct parentage on both sides.
 
-**Risks:** `tracestate` is a list; naively overwriting it discards other vendors' entries and breaks interop with the very ecosystems this design chose to be compatible with. The preservation test exists for that. Second risk: response-body capture requires wrapping `http.ResponseWriter`, which can silently break `http.Flusher` and `http.Hijacker` for streaming handlers — Spec 1 wraps only for status code and records request bodies, not response bodies, on the server side.
+**Risks:** `tracestate` is a list; naively overwriting it discards other vendors' entries and breaks interop with the very ecosystems this design chose to be compatible with. The preservation test exists for that. Second risk: response-body capture requires wrapping `http.ResponseWriter`, which can silently break `http.Flusher` and `http.Hijacker` for streaming handlers, Spec 1 wraps only for status code and records request bodies, not response bodies, on the server side.
 
 - [ ] **Step 1: Write the failing layering test**
 
@@ -3136,7 +3136,7 @@ func TestMiddlewareDoesNotBreakTheHandlerOnRecordingFailure(t *testing.T) {
 - [ ] **Step 4: Run to verify failure**
 
 Run: `go test ./sdk/instrument/nethttp/`
-Expected: build failure — package does not exist.
+Expected: build failure, package does not exist.
 
 - [ ] **Step 5: Write the server middleware**
 
@@ -3397,7 +3397,7 @@ then set `hlc: beginHLC` in the returned `Handle` literal.
 - [ ] **Step 8: Run the propagation suite**
 
 Run: `GOARCH=amd64 CGO_ENABLED=1 go test ./sdk/... -race -v`
-Expected: PASS — all five nethttp tests plus the layering test.
+Expected: PASS, all five nethttp tests plus the layering test.
 
 - [ ] **Step 10: Verify propagation by eye through the harness**
 
@@ -3429,18 +3429,18 @@ git commit -m "feat(sdk): add HTTP instrumentation with W3C propagation"
 
 **Interfaces:**
 - Produces:
-  - `store.EventStore` — `AppendEvents(ctx, []*v1.Event) error`, `AppendGaps(ctx, []*v1.Gap) error`, `TraceEvents(ctx, traceID []byte) ([]*v1.Event, error)`, `Window(ctx, store.WindowQuery) ([]*v1.Event, error)`, `Gaps(ctx, from, to uint64) ([]*v1.Gap, error)`, `Traces(ctx, store.TraceQuery) ([]store.TraceSummary, error)`
-  - `store.BlobStore` — `Put(ctx, sha [32]byte, body []byte) (blobID string, err error)`, `Get(ctx, blobID string) ([]byte, error)`, `Has(ctx, shas [][32]byte) (missing [][32]byte, err error)`, `IDFor(sha [32]byte) string`
+  - `store.EventStore`, `AppendEvents(ctx, []*v1.Event) error`, `AppendGaps(ctx, []*v1.Gap) error`, `TraceEvents(ctx, traceID []byte) ([]*v1.Event, error)`, `Window(ctx, store.WindowQuery) ([]*v1.Event, error)`, `Gaps(ctx, from, to uint64) ([]*v1.Gap, error)`, `Traces(ctx, store.TraceQuery) ([]store.TraceSummary, error)`
+  - `store.BlobStore`, `Put(ctx, sha [32]byte, body []byte) (blobID string, err error)`, `Get(ctx, blobID string) ([]byte, error)`, `Has(ctx, shas [][32]byte) (missing [][32]byte, err error)`, `IDFor(sha [32]byte) string`
   - `store.WindowQuery{FromWallMS, ToWallMS uint64; Services []string; Limit int}`
   - `store.TraceQuery{FromWallMS, ToWallMS uint64; Service string; OnlyErrors bool; Limit int}`
   - `store.TraceSummary{TraceID []byte; RootService, RootRoute string; StartWallMS, EndWallMS uint64; EventCount int; HasError bool}`
   - `storetest.RunConformance(t *testing.T, newEvent func() store.EventStore, newBlob func() store.BlobStore)`
 
 **Invariants:**
-1. `EventStore` and `BlobStore` are independent — neither references the other's types.
+1. `EventStore` and `BlobStore` are independent, neither references the other's types.
 2. `BlobStore` is content-addressed: putting identical bytes twice yields one stored object and the same `blobID`.
 3. `blobID` is opaque to callers. Tests must not assume it equals the hex SHA.
-4. Window queries order by `(hlc.wall_ms, hlc.logical, emitter_id)` — never by wall clock.
+4. Window queries order by `(hlc.wall_ms, hlc.logical, emitter_id)`, never by wall clock.
 
 **Tests:** A shared conformance suite exercised against the in-memory implementation now and against SQLite/blobfs in Task 12, so both backends are proven identical.
 
@@ -3495,7 +3495,7 @@ type TraceSummary struct {
 }
 
 // EventStore is the append-mostly event index. Results are ordered by
-// (hlc.wall_ms, hlc.logical, id.emitter_id) — never by wall clock.
+// (hlc.wall_ms, hlc.logical, id.emitter_id), never by wall clock.
 type EventStore interface {
 	AppendEvents(ctx context.Context, events []*v1.Event) error
 	AppendGaps(ctx context.Context, gaps []*v1.Gap) error
@@ -3968,7 +3968,7 @@ func TestMemoryConformance(t *testing.T) {
 - [ ] **Step 6: Run the conformance suite**
 
 Run: `GOARCH=amd64 CGO_ENABLED=1 go test ./store/... -race -v`
-Expected: PASS — all seven conformance subtests.
+Expected: PASS, all seven conformance subtests.
 
 - [ ] **Step 7: Commit**
 
@@ -3989,14 +3989,14 @@ git commit -m "feat(store): add EventStore and BlobStore with in-memory backends
 - Consumes: `sdk.Sink`, `store.EventStore`, `store.BlobStore`, `v1.Batch`, `v1.BatchAck`.
 - Produces:
   - `exporter.New(Config) *Exporter` where `Config{Endpoint string; QueueSize int; BatchSize int; FlushInterval time.Duration; Client *http.Client; EmitterID [8]byte}`
-  - `(*Exporter).Emit(*v1.Event)` — satisfies `sdk.Sink`, never blocks
+  - `(*Exporter).Emit(*v1.Event)`, satisfies `sdk.Sink`, never blocks
   - `(*Exporter).Flush(ctx) error`, `(*Exporter).Close() error`, `(*Exporter).DroppedCount() uint64`
   - `ingest.Handler(es store.EventStore, bs store.BlobStore) http.Handler` serving `POST /v1/batch`, `POST /v1/blobs/{blobID}`, `POST /v1/blobs/has`
   - `api.New(es store.EventStore, bs store.BlobStore) http.Handler` mounting ingest plus the query routes added in Task 10
 
 **Invariants:**
 1. `Emit` never blocks the caller. When the queue is full the event is dropped and the dropped counter increments.
-2. Every drop is eventually described by a `Gap` record carrying the emitter, HLC window, count, and reason — never silence.
+2. Every drop is eventually described by a `Gap` record carrying the emitter, HLC window, count, and reason, never silence.
 3. A collector that is unreachable produces `UNREACHABLE` gaps, and the SDK keeps running.
 4. `Close` flushes what it can and returns; it never hangs the application on shutdown.
 
@@ -4142,7 +4142,7 @@ func TestUnreachableCollectorProducesGapsAndKeepsRunning(t *testing.T) {
 - [ ] **Step 2: Run to verify failure**
 
 Run: `go test ./sdk/exporter/`
-Expected: build failure — package does not exist.
+Expected: build failure, package does not exist.
 
 - [ ] **Step 3: Write the exporter**
 
@@ -4388,7 +4388,7 @@ func (e *Exporter) DroppedCount() uint64 {
 - [ ] **Step 4: Run the exporter tests**
 
 Run: `GOARCH=amd64 CGO_ENABLED=1 go test ./sdk/exporter/ -race -v`
-Expected: PASS — all three tests.
+Expected: PASS, all three tests.
 
 - [ ] **Step 4b: Resolve the emitter-ID ordering problem**
 
@@ -4398,7 +4398,7 @@ Add to `sdk/recorder.go`:
 
 ```go
 // EmitterID returns this recorder's emitter ID, so components constructed
-// before the recorder — the exporter in particular — can be told which emitter
+// before the recorder, the exporter in particular, can be told which emitter
 // they are shipping for.
 func (r *Recorder) EmitterID() identity.EmitterID { return r.gen.Emitter() }
 ```
@@ -4612,7 +4612,7 @@ func Handler(es store.EventStore, bs store.BlobStore) http.Handler {
 - [ ] **Step 7: Run the ingest tests**
 
 Run: `GOARCH=amd64 CGO_ENABLED=1 go test ./collector/... -race -v`
-Expected: PASS — both tests.
+Expected: PASS, both tests.
 
 - [ ] **Step 8: Write the collector binary**
 
@@ -4686,7 +4686,7 @@ git commit -m "feat(collector): add batching exporter with gap records and inges
 
 ## Task 9: Deterministic incident harness
 
-**Objective:** The acceptance incident can be reproduced on demand, in-process, with a virtual clock — so the replay engine and UI are developed against a real recording rather than a production outage.
+**Objective:** The acceptance incident can be reproduced on demand, in-process, with a virtual clock, so the replay engine and UI are developed against a real recording rather than a production outage.
 
 **Deliverables:** `sdk/link.go`, `harness/clock.go`, `harness/service.go`, `harness/scenario.go`, `harness/harness_test.go`.
 
@@ -4694,13 +4694,13 @@ git commit -m "feat(collector): add batching exporter with gap records and inges
 - Consumes: `sdk.Recorder`, `mnemohttp`, `store.EventStore`, `store.BlobStore`.
 - Produces:
   - `sdk.RetryOf(tr identity.TraceID, prev identity.EventID) *v1.Link`
-  - `harness.Clock` — `NewClock(start time.Time) *Clock`, `(*Clock).Now() time.Time`, `(*Clock).Advance(time.Duration)`, `(*Clock).Skew(time.Duration)`
+  - `harness.Clock`, `NewClock(start time.Time) *Clock`, `(*Clock).Now() time.Time`, `(*Clock).Advance(time.Duration)`, `(*Clock).Skew(time.Duration)`
   - `harness.Service{Name string; Rec *sdk.Recorder; URL string; Client *http.Client}`
   - `harness.New(t *testing.T, opts Options) *Harness` where `Options{Services []ServiceSpec; Sink sdk.Sink; Start time.Time}`
   - `harness.ServiceSpec{Name string; Handler func(*Ctx); ClockSkew time.Duration}`
   - `(*Harness).Service(name string) *Service`, `(*Harness).Run(service, path string) (*http.Response, error)`, `(*Harness).Close()`
   - `harness.AcceptanceScenario(t *testing.T, sink sdk.Sink) *Harness`
-  - `harness.Ctx` — `Request() *http.Request`, `Call(service, path string) (*http.Response, error)`, `CallWithRetries(service, path string, attempts int) error`, `Hang()`, `Fail(code int)`
+  - `harness.Ctx`, `Request() *http.Request`, `Call(service, path string) (*http.Response, error)`, `CallWithRetries(service, path string, attempts int) error`, `Hang()`, `Fail(code int)`
 
 **Invariants:**
 1. The harness is deterministic: same scenario, same event graph (modulo random IDs).
@@ -4712,7 +4712,7 @@ git commit -m "feat(collector): add batching exporter with gap records and inges
 
 **Definition of done:** `GOARCH=amd64 CGO_ENABLED=1 go test ./harness/ -race` reproduces the three-service incident and asserts: one trace, `REMOTE_CALL` edges across all three services, exactly three `RETRY_OF` links, and exactly one unmatched `BEGIN`.
 
-**Risks:** A harness that is subtly non-deterministic makes every downstream failure hard to attribute. Determinism comes from the virtual clock plus in-process `httptest` servers; do not introduce real sleeps. Second risk: `Hang()` leaking goroutines and making the whole suite flaky — it must be released at `Close()`.
+**Risks:** A harness that is subtly non-deterministic makes every downstream failure hard to attribute. Determinism comes from the virtual clock plus in-process `httptest` servers; do not introduce real sleeps. Second risk: `Hang()` leaking goroutines and making the whole suite flaky, it must be released at `Close()`.
 
 - [ ] **Step 1: Add the retry link helper**
 
@@ -5154,7 +5154,7 @@ func TestAcceptanceScenarioProducesTheExpectedGraph(t *testing.T) {
 - [ ] **Step 6: Run the harness test**
 
 Run: `GOARCH=amd64 CGO_ENABLED=1 go test ./harness/ -race -v`
-Expected: PASS. If it hangs, `Hang()` is not being released by `Close()` — fix that before proceeding.
+Expected: PASS. If it hangs, `Hang()` is not being released by `Close()`, fix that before proceeding.
 
 - [ ] **Step 7: Commit**
 
@@ -5167,7 +5167,7 @@ git commit -m "test(harness): add deterministic incident harness and acceptance 
 
 ## Task 10: Replay engine and query API
 
-**Objective:** A recording becomes a Timeline Model — the only thing the UI ever sees — with bounded response size, in-flight detection, gap markers, and skew warnings.
+**Objective:** A recording becomes a Timeline Model, the only thing the UI ever sees, with bounded response size, in-flight detection, gap markers, and skew warnings.
 
 **Deliverables:** `replay/model.go`, `replay/engine.go`, `replay/chain.go`, `collector/query/query.go`, tests.
 
@@ -5187,7 +5187,7 @@ git commit -m "test(harness): add deterministic incident harness and acceptance 
 
 **Invariants:**
 1. **Response size is a function of `Resolution`, not incident size.** A timeline over a million events returns at most `len(Lanes) * Resolution` buckets.
-2. `BEGIN` without a matching `END` becomes an `InFlightOp` — never dropped, never rendered as complete.
+2. `BEGIN` without a matching `END` becomes an `InFlightOp`, never dropped, never rendered as complete.
 3. Chain traversal is bounded by `maxNodes` and sets `Truncated` when it stops early.
 4. Ordering is by `(hlc.wall_ms, hlc.logical, emitter_id)`. Wall clock is used only for skew detection.
 5. A child event whose wall clock precedes its parent's produces a `SkewWarning`, not an impossible timeline.
@@ -5196,7 +5196,7 @@ git commit -m "test(harness): add deterministic incident harness and acceptance 
 
 **Definition of done:** `GOARCH=amd64 CGO_ENABLED=1 go test ./replay/ -race` is green, including a test that feeds 100,000 synthetic events at `Resolution: 200` and asserts no lane exceeds 200 buckets.
 
-**Risks:** Bucketing arithmetic that is off by one at window edges silently drops the first or last event of an incident — which is often the interesting one, and an index past the last bucket panics the engine outright. `TestBucketCountIsBoundedByResolution` asserts total counts rather than only bucket length, but its events stop one millisecond short of `ToWallMS`, so it cannot exercise the clamp at all. `TestEventsAtWindowEdgesAreCounted` places events at exactly `FromWallMS` and exactly `ToWallMS` and is the test that actually covers the boundary — verified to panic without the clamp.
+**Risks:** Bucketing arithmetic that is off by one at window edges silently drops the first or last event of an incident, which is often the interesting one, and an index past the last bucket panics the engine outright. `TestBucketCountIsBoundedByResolution` asserts total counts rather than only bucket length, but its events stop one millisecond short of `ToWallMS`, so it cannot exercise the clamp at all. `TestEventsAtWindowEdgesAreCounted` places events at exactly `FromWallMS` and exactly `ToWallMS` and is the test that actually covers the boundary, verified to panic without the clamp.
 
 - [ ] **Step 1: Write the model types**
 
@@ -5343,7 +5343,7 @@ func TestBucketCountIsBoundedByResolution(t *testing.T) {
 		}
 	}
 	if total != n {
-		t.Fatalf("buckets account for %d events, want %d — events were dropped at a window edge", total, n)
+		t.Fatalf("buckets account for %d events, want %d, events were dropped at a window edge", total, n)
 	}
 }
 
@@ -5462,7 +5462,7 @@ func TestChainIsBoundedAndMarksTruncation(t *testing.T) {
 - [ ] **Step 3: Run to verify failure**
 
 Run: `go test ./replay/`
-Expected: FAIL — `undefined: replay.New`
+Expected: FAIL, `undefined: replay.New`
 
 - [ ] **Step 4: Write the engine**
 
@@ -5753,7 +5753,7 @@ func (e *Engine) Chain(ctx context.Context, traceID []byte, eventID *v1.EventID,
 - [ ] **Step 6: Run the replay tests**
 
 Run: `GOARCH=amd64 CGO_ENABLED=1 go test ./replay/ -race -v`
-Expected: PASS — all five tests.
+Expected: PASS, all five tests.
 
 - [ ] **Step 7: Write the query API**
 
@@ -5894,7 +5894,7 @@ git commit -m "feat(replay): add replay engine with bounded bucketing and query 
 
 ## Task 11: Split-view replay UI
 
-**Objective:** The acceptance incident is visibly correct on screen — swimlane timeline on the left, recorded causal chain on the right, with in-flight, gap, and skew states rendered distinctly.
+**Objective:** The acceptance incident is visibly correct on screen, swimlane timeline on the left, recorded causal chain on the right, with in-flight, gap, and skew states rendered distinctly.
 
 > **REQUIRED SKILL:** Invoke the `ui-ux-pro-max` skill before writing any markup or styling in this task. It governs visual design, component styling, and interaction patterns. The layout and required states below are fixed by the spec; everything about how they *look* comes from that skill.
 
@@ -5904,20 +5904,20 @@ git commit -m "feat(replay): add replay engine with bounded bucketing and query 
 - Consumes: `GET /api/timeline`, `GET /api/chain`, `GET /api/traces`, `GET /api/blob/{blobID}`.
 - Produces: `ui.Handler() http.Handler` serving the embedded assets at `/`.
 
-**Invariants (fixed by the spec — the skill governs appearance, not presence):**
+**Invariants (fixed by the spec, the skill governs appearance, not presence):**
 1. Selecting anything on the timeline loads and renders its recorded causal chain.
 2. In-flight operations render with a **`never ended`** marker, visually distinct from completed ones.
-3. Gap markers render **inline at the point in the timeline where events were lost** — never as a footnote, never silently.
+3. Gap markers render **inline at the point in the timeline where events were lost**, never as a footnote, never silently.
 4. Skew warnings replace impossible timeline geometry rather than rendering it.
 5. Recorded and inferred edges have distinct visual language. v1 renders only recorded edges; the distinction is established now so adding inference later cannot quietly blur them.
 6. HLC never appears in the narrative view. It appears in the raw event inspector.
-7. No external network requests — the collector serves everything, and a strict offline page must work.
+7. No external network requests, the collector serves everything, and a strict offline page must work.
 
 **Tests:** A Go test asserting the embedded assets are served and non-empty; a manual verification step against the live acceptance scenario.
 
 **Definition of done:** With the collector running and the acceptance scenario recorded into it, opening the UI shows one trace whose chain panel reads `checkout-api → inventory-svc → 3 retry attempts → pricing-svc (never ended)`, with the skew warning present for `pricing-svc`.
 
-**Risks:** The temptation to make the UI compute the timeline model itself. It must not — bucketing is server-side, and a browser-side reimplementation would diverge from the future CLI. The UI's only job is rendering what `/api/timeline` returns.
+**Risks:** The temptation to make the UI compute the timeline model itself. It must not, bucketing is server-side, and a browser-side reimplementation would diverge from the future CLI. The UI's only job is rendering what `/api/timeline` returns.
 
 - [ ] **Step 1: Invoke the design skill**
 
@@ -6014,7 +6014,7 @@ Create `ui/index.html`. The structure below is required; all styling comes from 
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Mnemosyne — Replay</title>
+  <title>Mnemosyne, Replay</title>
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
@@ -6142,7 +6142,7 @@ function renderInFlight(m) {
   for (const op of m.inFlight) {
     const el = document.createElement("button");
     el.className = "inflight";
-    el.textContent = `${op.service} · ${op.description} — never ended`;
+    el.textContent = `${op.service} · ${op.description}, never ended`;
     el.addEventListener("click", () => loadChain(op.eventId));
     $("lanes").append(el);
   }
@@ -6185,7 +6185,7 @@ function renderChain(chain) {
   if (chain.truncated) {
     const li = document.createElement("li");
     li.className = "chain-truncated";
-    li.textContent = "chain truncated — more causally related events exist";
+    li.textContent = "chain truncated, more causally related events exist";
     host.append(li);
   }
 }
@@ -6230,7 +6230,7 @@ Add the `ui` import.
 - [ ] **Step 8: Run the UI tests**
 
 Run: `go test ./ui/ -v`
-Expected: PASS — both tests.
+Expected: PASS, both tests.
 
 - [ ] **Step 9: Verify against the live scenario**
 
@@ -6252,7 +6252,7 @@ import (
 
 // runScenario records the acceptance incident into a live collector so the UI
 // can be checked by eye. It borrows testing.T because the harness is built for
-// tests; that is deliberate — the demo and the test must exercise identical
+// tests; that is deliberate, the demo and the test must exercise identical
 // wiring, or the demo stops proving anything.
 func runScenario(w io.Writer, endpoint string) error {
 	ex := exporter.New(exporter.Config{
@@ -6327,7 +6327,7 @@ git commit -m "feat(ui): add split-view replay UI with in-flight, gap, and skew 
 - Produces: `sqlite.Open(path string) (*Store, error)` implementing `store.EventStore`; `blobfs.Open(dir string) (*Store, error)` implementing `store.BlobStore`.
 
 **Invariants:**
-1. Both backends pass `storetest.RunConformance` unchanged — no backend-specific test relaxations.
+1. Both backends pass `storetest.RunConformance` unchanged, no backend-specific test relaxations.
 2. `CGO_ENABLED=0` still builds. The driver is `modernc.org/sqlite`.
 3. Events are indexed on `(hlc_wall_ms, hlc_logical, emitter_id)` and on `trace_id`.
 4. `blobfs` is content-addressed and sharded by hash prefix so no directory holds an unbounded number of files.
@@ -6382,7 +6382,7 @@ func TestDurableConformance(t *testing.T) {
 - [ ] **Step 3: Run to verify failure**
 
 Run: `go test ./store/sqlite/`
-Expected: build failure — packages do not exist.
+Expected: build failure, packages do not exist.
 
 - [ ] **Step 4: Write the SQLite event store**
 
@@ -6743,7 +6743,7 @@ func (s *Store) Close() error { return nil }
 - [ ] **Step 7: Run the conformance suite against both backends**
 
 Run: `GOARCH=amd64 CGO_ENABLED=1 go test ./store/... -race -v`
-Expected: PASS — the same seven subtests for memory, sqlite, and blobfs.
+Expected: PASS, the same seven subtests for memory, sqlite, and blobfs.
 
 - [ ] **Step 8: Add backend selection to the collector**
 
@@ -6826,13 +6826,13 @@ git commit -m "feat(store): add SQLite and filesystem backends passing conforman
 
 **Deliverables:** `acceptance/acceptance_test.go`.
 
-**Interfaces:** Consumes everything built so far. Produces nothing new — this task adds no production code.
+**Interfaces:** Consumes everything built so far. Produces nothing new, this task adds no production code.
 
 **Invariants:** The assertion table from the frozen spec, in full. Each row maps to one subtest.
 
 **Definition of done:** `GOARCH=amd64 CGO_ENABLED=1 go test ./acceptance/ -race -v` passes all seven subtests against `sqlite` + `blobfs`.
 
-**Risks:** Writing the test against implementation behaviour rather than the spec's claims. Each subtest name is copied from the spec's table so a reviewer can check the mapping by eye. If a subtest is hard to write, that is information about the design, not a reason to weaken the assertion — amend the spec instead.
+**Risks:** Writing the test against implementation behaviour rather than the spec's claims. Each subtest name is copied from the spec's table so a reviewer can check the mapping by eye. If a subtest is hard to write, that is information about the design, not a reason to weaken the assertion, amend the spec instead.
 
 - [ ] **Step 1: Write the acceptance test**
 
@@ -6951,7 +6951,7 @@ func TestRetryAttemptsAreSiblingsUnderOneScope(t *testing.T) {
 		t.Fatal("no RETRY_OF edges recorded")
 	}
 	if len(parents) != 1 {
-		t.Fatalf("retry attempts have %d distinct parents, want 1 — they were nested, not siblings", len(parents))
+		t.Fatalf("retry attempts have %d distinct parents, want 1, they were nested, not siblings", len(parents))
 	}
 }
 
@@ -7105,7 +7105,7 @@ func TestRecordingSurvivesRestart(t *testing.T) {
 - [ ] **Step 2: Run the acceptance suite**
 
 Run: `GOARCH=amd64 CGO_ENABLED=1 go test ./acceptance/ -race -v`
-Expected: PASS — all seven tests.
+Expected: PASS, all seven tests.
 
 - [ ] **Step 3: Run everything**
 
@@ -7131,7 +7131,7 @@ git commit -m "test: add Spec 1 end-to-end acceptance suite"
 
 > **Execution order:** run this immediately after Task 1. It is numbered 14 only because the plan's task numbers are stable identifiers, not an ordering.
 
-**Objective:** A committed golden descriptor fails the build the moment a `.proto` field number, enum value, or reserved range changes — so the frozen schema is enforced by a test rather than by reviewer attention.
+**Objective:** A committed golden descriptor fails the build the moment a `.proto` field number, enum value, or reserved range changes, so the frozen schema is enforced by a test rather than by reviewer attention.
 
 **Why this exists:** Task 1's round-trip test cannot catch this class of bug. Regenerating after a field-number change produces marshal *and* unmarshal code using the new numbers, so a self-consistent renumbering round-trips perfectly and the test still passes. The only thing that detects it is comparing the schema's descriptor against a recorded baseline. The design document declares this wire format frozen; nothing currently enforces that claim.
 
@@ -7143,17 +7143,17 @@ git commit -m "test: add Spec 1 end-to-end acceptance suite"
 
 **Invariants:**
 1. The golden is built from the descriptors embedded in the *generated Go code*, not by invoking `protoc`. The test must pass with no `protoc` on PATH and with `CGO_ENABLED=0`.
-2. Serialization is deterministic — the same schema always produces identical golden bytes, regardless of map iteration order.
+2. Serialization is deterministic, the same schema always produces identical golden bytes, regardless of map iteration order.
 3. The four files are emitted in a stable, sorted order.
 4. A field-number change, an enum-value change, or a change to `EdgeType`'s reserved range fails the test.
-5. A comment-only or formatting-only `.proto` edit does **not** fail the test. `protodesc` omits source-code info, so this holds by construction — but it is asserted, because a guard that cries wolf gets deleted.
+5. A comment-only or formatting-only `.proto` edit does **not** fail the test. `protodesc` omits source-code info, so this holds by construction, but it is asserted, because a guard that cries wolf gets deleted.
 6. On failure the test prints a readable structural diff, not a byte offset.
 
 **Tests:** The golden comparison itself, an assertion that regenerating twice is byte-stable, and a focused assertion naming the specific invariants the design calls out (`Event` field numbers, `EdgeType` reserving 5–15) so a failure says what broke.
 
-**Definition of done:** `CGO_ENABLED=0 go test ./schema/` passes; transposing two `HttpClient` field numbers, regenerating bindings, and re-running makes it **fail with a message naming the changed field** — verified and then reverted.
+**Definition of done:** `CGO_ENABLED=0 go test ./schema/` passes; transposing two `HttpClient` field numbers, regenerating bindings, and re-running makes it **fail with a message naming the changed field**, verified and then reverted.
 
-**Risks:** The obvious failure mode is a guard that cannot actually fail. Task 1 shipped a mutation check that proved nothing because both sides of the round trip changed together; do not repeat that pattern. The mutation check below is the deliverable's real acceptance criterion, and it must be performed against the regenerated bindings. The second risk is a golden so noisy that unrelated protobuf-library upgrades break it — mitigated by comparing `FileDescriptorProto` structure, which is stable across generator versions, rather than raw `rawDesc` bytes.
+**Risks:** The obvious failure mode is a guard that cannot actually fail. Task 1 shipped a mutation check that proved nothing because both sides of the round trip changed together; do not repeat that pattern. The mutation check below is the deliverable's real acceptance criterion, and it must be performed against the regenerated bindings. The second risk is a golden so noisy that unrelated protobuf-library upgrades break it, mitigated by comparing `FileDescriptorProto` structure, which is stable across generator versions, rather than raw `rawDesc` bytes.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -7195,7 +7195,7 @@ var schemaFiles = []string{
 // on a machine that has never installed it.
 //
 // protodesc omits source-code info, so comments and formatting do not
-// participate — only structure: field numbers, types, enum values, and
+// participate, only structure: field numbers, types, enum values, and
 // reserved ranges.
 func currentDescriptorSet(t *testing.T) *descriptorpb.FileDescriptorSet {
 	t.Helper()
@@ -7230,7 +7230,7 @@ func TestSchemaHasNotDrifted(t *testing.T) {
 		if err := os.WriteFile(goldenPath, got, 0o644); err != nil {
 			t.Fatalf("write golden: %v", err)
 		}
-		t.Logf("golden updated (%d bytes) — commit it only alongside an intentional schema change", len(got))
+		t.Logf("golden updated (%d bytes), commit it only alongside an intentional schema change", len(got))
 		return
 	}
 
@@ -7324,7 +7324,7 @@ func TestFrozenInvariantsAreNamed(t *testing.T) {
 - [ ] **Step 2: Run to verify it fails**
 
 Run: `go test ./schema/ -run TestSchemaHasNotDrifted`
-Expected: FAIL — `read golden (regenerate with: go test ./schema/ -update)`, because `testdata/descriptor.golden.binpb` does not exist yet.
+Expected: FAIL, `read golden (regenerate with: go test ./schema/ -update)`, because `testdata/descriptor.golden.binpb` does not exist yet.
 
 - [ ] **Step 3: Generate the golden**
 
@@ -7337,7 +7337,7 @@ Expected: PASS, and `schema/testdata/descriptor.golden.binpb` now exists.
 - [ ] **Step 4: Run the full schema suite**
 
 Run: `CGO_ENABLED=0 go test ./schema/ -v`
-Expected: PASS — `TestSchemaHasNotDrifted`, `TestGoldenIsDeterministic`, `TestFrozenInvariantsAreNamed` and its two subtests, plus Task 1's round-trip tests. Output pristine.
+Expected: PASS, `TestSchemaHasNotDrifted`, `TestGoldenIsDeterministic`, `TestFrozenInvariantsAreNamed` and its two subtests, plus Task 1's round-trip tests. Output pristine.
 
 - [ ] **Step 5: Prove the guard actually fires**
 
@@ -7347,7 +7347,7 @@ This step is the deliverable's real acceptance criterion. A guard that cannot fa
 2. Regenerate the bindings with the project's protoc invocation.
 3. Run `go test ./schema/ -run TestSchemaHasNotDrifted`.
 
-Expected: **FAIL**, with a diff naming `host` and `path` and their changed numbers. Capture that output — it is the evidence this task exists to produce.
+Expected: **FAIL**, with a diff naming `host` and `path` and their changed numbers. Capture that output, it is the evidence this task exists to produce.
 
 4. Revert the `.proto` change, regenerate again, and confirm the suite passes.
 5. Run `git status` and `git diff` and confirm no `.proto` or `.pb.go` file is left modified.
@@ -7358,7 +7358,7 @@ Expected: **FAIL**, with a diff naming `host` and `path` and their changed numbe
 2. Regenerate.
 3. Run `go test ./schema/`.
 
-Expected: **PASS** — `protodesc` omits source-code info, so comments are invisible to the guard. A guard that fired on comment edits would be disabled by the first person it annoyed.
+Expected: **PASS**, `protodesc` omits source-code info, so comments are invisible to the guard. A guard that fired on comment edits would be disabled by the first person it annoyed.
 
 4. Revert the comment and regenerate. Confirm `git status` is clean of `.proto`/`.pb.go` changes.
 
@@ -7401,6 +7401,6 @@ Mapping from the frozen design to the task that implements it, so gaps are visib
 | UI: split view, in-flight, gaps, skew, recorded-vs-inferred | 11 |
 | Testing: conformance, property tests, harness, acceptance | 1, 2, 3, 4, 5, 7, 9, 13 |
 
-**Deferred within Spec 1, per `implementation-order.md`** — none of these change what replay observes, so they are built after the first replay renders: capture-policy matching beyond the hardcoded default, BEGIN elision, backpressure shedding hints, and blob dedup via `HasBlobs` on the upload path.
+**Deferred within Spec 1, per `implementation-order.md`**, none of these change what replay observes, so they are built after the first replay renders: capture-policy matching beyond the hardcoded default, BEGIN elision, backpressure shedding hints, and blob dedup via `HasBlobs` on the upload path.
 
 **Not implemented, matching the spec's own non-goals:** PostgreSQL/Redis/Kafka adapters, inference engine, hermetic re-execution, ClickHouse, OpenTelemetry export, gRPC, goroutine tracking, auth, retention and compaction.

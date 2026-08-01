@@ -11,7 +11,7 @@
 // `operation` oneof flattened directly onto the event (`httpServer: {...}` /
 // `httpClient: {...}`) rather than wrapped in a Go-cased type name. protojson
 // also renders enums as their name string (e.g. `"HTTP_SERVER"`), not their
-// number. This file reads exactly those shapes — nothing is reformatted or
+// number. This file reads exactly those shapes, nothing is reformatted or
 // reinterpreted, only displayed.
 
 const $ = (id) => document.getElementById(id);
@@ -121,7 +121,7 @@ function renderLanes(m) {
 }
 
 // Gap markers render inline, at the exact point on the timeline where events
-// were lost — never as a footnote and never silently. A blank stretch of
+// were lost, never as a footnote and never silently. A blank stretch of
 // timeline is indistinguishable from "nothing happened", which is the worst
 // thing this tool could show an operator staring down an incident.
 function renderGaps(m) {
@@ -138,7 +138,7 @@ function renderGaps(m) {
 
     const label = document.createElement("span");
     label.className = "gap-label";
-    label.textContent = `${g.droppedCount} event${g.droppedCount === 1 ? "" : "s"} dropped — ${g.reason}`;
+    label.textContent = `${g.droppedCount} event${g.droppedCount === 1 ? "" : "s"} dropped (${g.reason})`;
     el.append(label);
     host.append(el);
   }
@@ -155,12 +155,12 @@ function renderSkew(m) {
     const el = document.createElement("div");
     el.className = "skew";
     el.setAttribute("role", "alert");
-    el.textContent = `clock skew: ${s.service} is ${s.observedSkewMs}ms behind its caller — ordering for this service is not trustworthy at wall-clock resolution`;
+    el.textContent = `clock skew: ${s.service} is ${s.observedSkewMs}ms behind its caller. Ordering for this service is not trustworthy at wall-clock resolution`;
     host.append(el);
   }
 }
 
-// In-flight operations — a BEGIN with no matching END — render with an
+// In-flight operations, a BEGIN with no matching END, render with an
 // explicit "never ended" marker, visually distinct from anything that
 // completed. This is how a hang or a deadlock looks in a recording: the
 // timeline must not go quiet exactly where the answer is.
@@ -206,7 +206,7 @@ function renderInFlight(m) {
 // /api/chain needs a trace ID; the Timeline Model does not attach one to each
 // in-flight or bucketed operation (buckets are aggregates with no event
 // identity at all). We resolve it through /api/traces and let the operator's
-// selection — defaulted to the first trace in the window — scope chain
+// selection, defaulted to the first trace in the window, scope chain
 // lookups, rather than guessing or fabricating an identity client-side.
 function populateTraces(traces) {
   const sel = $("trace");
@@ -216,7 +216,7 @@ function populateTraces(traces) {
   if ((traces ?? []).length === 0) {
     const opt = document.createElement("option");
     opt.value = "";
-    opt.textContent = "— no traces in window —";
+    opt.textContent = "no traces in window";
     sel.append(opt);
     sel.disabled = true;
     return;
@@ -267,7 +267,7 @@ function renderChain(chain) {
   for (const node of nodes ?? []) {
     const li = document.createElement("li");
     li.className = "chain-node";
-    // Every edge shown here was observed — v1 renders only recorded edges.
+    // Every edge shown here was observed, v1 renders only recorded edges.
     // The attribute (and its dedicated CSS treatment) exist now so that
     // adding inferred edges later cannot quietly blur a fact with a guess.
     li.dataset.provenance = "recorded";
@@ -287,7 +287,7 @@ function renderChain(chain) {
     title.textContent = describe(node.event);
     btn.append(title);
 
-    // HLC never appears here — only in the raw inspector below, opened by
+    // HLC never appears here, only in the raw inspector below, opened by
     // clicking a node. Without that escape hatch an engineer who disagrees
     // with an ordering decision has no way to find out why.
     if (!node.event.durationNanos) {
@@ -305,7 +305,7 @@ function renderChain(chain) {
   if (chain.truncated) {
     const li = document.createElement("li");
     li.className = "chain-truncated";
-    li.textContent = "chain truncated — more causally related events exist";
+    li.textContent = "chain truncated. More causally related events exist";
     host.append(li);
   }
 

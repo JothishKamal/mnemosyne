@@ -85,7 +85,7 @@ func TestSequentialOperationsAreSiblings(t *testing.T) {
 		t.Fatalf("a.parent = %d, want root %d", ea.Parent.Sequence, root.ID().Sequence)
 	}
 	if eb.Parent.Sequence != root.ID().Sequence {
-		t.Fatalf("b.parent = %d, want root %d (b was made a child of a — the linked-list bug)",
+		t.Fatalf("b.parent = %d, want root %d (b was made a child of a, the linked-list bug)",
 			eb.Parent.Sequence, root.ID().Sequence)
 	}
 }

@@ -38,7 +38,7 @@ jobs:
       # windows/386, where -race is unsupported at all, so locally this is run
       # as `GOARCH=amd64 CGO_ENABLED=1 go test -race`. On this linux/amd64
       # runner cgo is already the default, so the plain command below is the
-      # correct equivalent — do not "simplify" it to match the local one.
+      # correct equivalent, do not "simplify" it to match the local one.
       - run: go test ./... -race -count=1
 
   vet:

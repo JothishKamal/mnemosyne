@@ -179,7 +179,7 @@ func runAcceptanceScenario(t *testing.T) scenarioShape {
 // process and asserts the resulting event graph is structurally identical
 // every time (modulo the random trace/emitter/event IDs each run mints
 // fresh). Determinism here comes entirely from the virtual clock plus
-// in-process httptest servers — no real sleep is used anywhere in the
+// in-process httptest servers, no real sleep is used anywhere in the
 // scenario or in this test.
 func TestScenarioIsDeterministic(t *testing.T) {
 	var want scenarioShape
@@ -200,7 +200,7 @@ func TestScenarioIsDeterministic(t *testing.T) {
 // cannot make. Counting RETRY_OF edges proves attempts were linked; it says
 // nothing about whether they were linked as siblings under one scope or nested
 // into a chain. Nesting would assert that attempt N happened *inside* attempt
-// N-1, which is false — they are successive tries of the same call — and it is
+// N-1, which is false, they are successive tries of the same call, and it is
 // exactly the degeneration the SDK's scope invariant exists to prevent.
 func TestRetryAttemptsAreSiblingsNotAChain(t *testing.T) {
 	sk := &sink{}

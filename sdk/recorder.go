@@ -59,7 +59,7 @@ type Recorder struct {
 
 // PanicCount returns the number of recording panics this Recorder has
 // recovered. A non-zero count means recording work panicked and was
-// contained — recording is broken and should be investigated, but the
+// contained, recording is broken and should be investigated, but the
 // application it instruments kept running. It is never expected to grow in a
 // healthy deployment.
 func (r *Recorder) PanicCount() uint64 {
@@ -67,12 +67,12 @@ func (r *Recorder) PanicCount() uint64 {
 }
 
 // EmitterID returns this recorder's emitter ID, so components constructed
-// before the recorder — the exporter in particular — can be told which emitter
+// before the recorder, the exporter in particular, can be told which emitter
 // they are shipping for.
 func (r *Recorder) EmitterID() identity.EmitterID { return r.gen.Emitter() }
 
 // contain recovers a panic from recording work and counts it so the failure
-// is never silent. It must only guard recording work — Handle's pure
+// is never silent. It must only guard recording work, Handle's pure
 // accessors (Context, ID, Scope, HLC) are deliberately left unguarded because
 // a panic there would be an application bug, not a recording bug, and this
 // package must not hide those.
@@ -170,7 +170,7 @@ func (r *Recorder) Instant(ctx context.Context, op Operation) {
 //
 // h starts as an inert fallback carrying the caller's own context. It is only
 // promoted to child once the child context has been computed and the BEGIN
-// event has been fully constructed and emitted without panicking — so if
+// event has been fully constructed and emitted without panicking, so if
 // recording work panics anywhere along the way (event construction, a bad
 // Operation implementation, the Sink itself), contain() recovers it, counts
 // it, and the caller still gets back a working, if inert, Handle.
@@ -281,7 +281,7 @@ func toProtoHLC(t hlc.Timestamp) *v1.HLC {
 //
 // A Handle is NOT safe for concurrent use: confine each Handle to the goroutine
 // that opened it. Its mutable state (status, error, links, span, ended) is
-// unsynchronised by design — the Recorder is shared and locked, a Handle is not.
+// unsynchronised by design, the Recorder is shared and locked, a Handle is not.
 // Instrumentation adapters that fan out must open a Handle per goroutine.
 type Handle struct {
 	rec     *Recorder

@@ -94,7 +94,7 @@ func Handler(eng *replay.Engine, es store.EventStore, bs store.BlobStore) http.H
 // The Timeline Model and Chain carry embedded protobuf messages
 // (*v1.Event, *v1.EventID). encoding/json against the generated
 // protoc-gen-go structs directly would emit snake_case field names and,
-// for the operation oneof, a Go-cased wrapper object — a different
+// for the operation oneof, a Go-cased wrapper object, a different
 // naming convention than the rest of the payload, which uses explicit
 // camelCase tags (see replay/model.go). protojson emits camelCase and
 // flattens oneofs to their field name, so every protobuf message is

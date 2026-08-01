@@ -148,7 +148,7 @@ func TestRetryAttemptsAreSiblingsUnderOneScope(t *testing.T) {
 		t.Fatal("no RETRY_OF edges recorded")
 	}
 	if len(parents) != 1 {
-		t.Fatalf("retry attempts have %d distinct parents, want 1 — they were nested, not siblings", len(parents))
+		t.Fatalf("retry attempts have %d distinct parents, want 1, they were nested, not siblings", len(parents))
 	}
 }
 

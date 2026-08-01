@@ -96,7 +96,7 @@ func (c *Clock) Observe(remote Timestamp) Timestamp {
 
 // bump returns the timestamp one logical step past baseLogical at wall,
 // carrying into the wall component when the logical counter would overflow.
-// Overflow requires 2^32 events within a single wall-millisecond — a stalled
+// Overflow requires 2^32 events within a single wall-millisecond, a stalled
 // physical clock under sustained load. Carrying preserves strict monotonicity;
 // wrapping to zero at the same wall time would violate it, silently, in the one
 // place the whole system's ordering rests.

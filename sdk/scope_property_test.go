@@ -12,7 +12,7 @@ import (
 
 // TestScopeInvariantUnderRandomizedNesting builds arbitrary nesting trees and
 // asserts that every emitted event's parent is exactly its lexically enclosing
-// scope — the invariant the whole causal model rests on.
+// scope, the invariant the whole causal model rests on.
 func TestScopeInvariantUnderRandomizedNesting(t *testing.T) {
 	rapid.Check(t, func(rt *rapid.T) {
 		rec, sink := newTestRecorderRapid(rt)

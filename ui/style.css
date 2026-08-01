@@ -2,13 +2,13 @@
  *
  * Design system (chosen via the ui-ux-pro-max skill: "developer observability
  * tool / dark mode / dense dashboard" query):
- *   - Palette: API Developer Portal dark set — near-black background, code-dark
+ *   - Palette: API Developer Portal dark set, near-black background, code-dark
  *     panels, semantic green for recorded fact, red for error, amber for
  *     unresolved/in-flight, violet reserved for a future "inferred" edge type.
  *   - Typography: system sans-serif stack (visually Inter-adjacent) for the
  *     narrative UI; a monospace stack strictly for the raw event inspector,
  *     where HLC and other machine detail live.
- *   - Density: 8/10 (dashboard-dense) — a tight 4px-based spacing scale so a
+ *   - Density: 8/10 (dashboard-dense), a tight 4px-based spacing scale so a
  *     long incident's lanes and a full causal chain both fit without excess
  *     chrome.
  *   - No web fonts, no CDN assets, no remote images: the collector serves
@@ -329,7 +329,7 @@ select {
 
 /* --- gap markers -----------------------------------------------------------
  * Rendered inline, positioned over the exact wall-clock span where events
- * were lost — never a footnote below the timeline, never a blank stretch
+ * were lost, never a footnote below the timeline, never a blank stretch
  * that reads as "nothing happened".
  */
 
@@ -371,7 +371,7 @@ select {
 }
 
 /* --- in-flight / never ended ---------------------------------------------
- * A separate, unmistakable section — not folded into the lanes — because an
+ * A separate, unmistakable section, not folded into the lanes, because an
  * unmatched BEGIN is exactly what a deadlock or hung request looks like, and
  * it must never be one visual step away from "everything completed".
  */
@@ -537,7 +537,7 @@ select {
 
 /* --- raw event inspector ---------------------------------------------------
  * The only place HLC is shown. It never appears in the narrative timeline or
- * chain — those read wall-clock and causal order — but an engineer who
+ * chain, those read wall-clock and causal order, but an engineer who
  * disagrees with an ordering decision needs a way to see the logical clock
  * that produced it.
  */
