@@ -33,7 +33,7 @@ var schemaFiles = []string{
 // on a machine that has never installed it.
 //
 // protodesc omits source-code info, so comments and formatting do not
-// participate — only structure: field numbers, types, enum values, and
+// participate, only structure: field numbers, types, enum values, and
 // reserved ranges.
 func currentDescriptorSet(t *testing.T) *descriptorpb.FileDescriptorSet {
 	t.Helper()
@@ -68,7 +68,7 @@ func TestSchemaHasNotDrifted(t *testing.T) {
 		if err := os.WriteFile(goldenPath, got, 0o644); err != nil {
 			t.Fatalf("write golden: %v", err)
 		}
-		t.Logf("golden updated (%d bytes) — commit it only alongside an intentional schema change", len(got))
+		t.Logf("golden updated (%d bytes), commit it only alongside an intentional schema change", len(got))
 		return
 	}
 

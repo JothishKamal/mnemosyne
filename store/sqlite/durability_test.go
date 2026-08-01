@@ -78,7 +78,7 @@ func TestSurvivesReopen(t *testing.T) {
 		t.Fatalf("Close (blobs): %v", err)
 	}
 
-	// Reopen from the same paths — a fresh process would do exactly this.
+	// Reopen from the same paths, a fresh process would do exactly this.
 	es2, err := sqlite.Open(dbPath)
 	if err != nil {
 		t.Fatalf("sqlite.Open (reopen): %v", err)

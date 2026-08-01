@@ -1,8 +1,8 @@
-# Implementation Order — Spec 1
+# Implementation Order, Spec 1
 
 Dependency order only. Architecture lives in `2026-07-23-mnemosyne-design.md`.
 
-The ordering rule: **get to a rendered replay before building anything durable.** Persistence is step 10 for a reason — two weeks of storage work before the first timeline renders is how the schema goes unvalidated.
+The ordering rule: **get to a rendered replay before building anything durable.** Persistence is step 10 for a reason, two weeks of storage work before the first timeline renders is how the schema goes unvalidated.
 
 | # | Step | Unblocks | Done when |
 |---|---|---|---|
@@ -19,4 +19,4 @@ The ordering rule: **get to a rendered replay before building anything durable.*
 
 Deferred within Spec 1 until after step 9, because none of them change what replay observes: capture policy matching beyond a hardcoded default, BEGIN elision, backpressure shedding, blob dedup via `HasBlobs`.
 
-Steps 2–4 are the only ones where a mistake is expensive to undo — they define the invariants every later step assumes. Everything from 6 onward is replaceable.
+Steps 2–4 are the only ones where a mistake is expensive to undo, they define the invariants every later step assumes. Everything from 6 onward is replaceable.

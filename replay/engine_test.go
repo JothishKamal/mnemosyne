@@ -58,7 +58,7 @@ func TestBucketCountIsBoundedByResolution(t *testing.T) {
 		}
 	}
 	if total != n {
-		t.Fatalf("buckets account for %d events, want %d — events were dropped at a window edge", total, n)
+		t.Fatalf("buckets account for %d events, want %d, events were dropped at a window edge", total, n)
 	}
 }
 
@@ -174,7 +174,7 @@ func TestChainIsBoundedAndMarksTruncation(t *testing.T) {
 
 // TestEventsAtWindowEdgesAreCounted pins the boundary the bucketing clamp
 // exists for. TestBucketCountIsBoundedByResolution never places an event at
-// ToWallMS — its events stop one millisecond short — so it cannot detect a
+// ToWallMS, its events stop one millisecond short, so it cannot detect a
 // missing or wrong clamp. An off-by-one here silently drops the first or last
 // event of an incident, which is often the interesting one.
 func TestEventsAtWindowEdgesAreCounted(t *testing.T) {
@@ -211,6 +211,6 @@ func TestEventsAtWindowEdgesAreCounted(t *testing.T) {
 		}
 	}
 	if total != 3 {
-		t.Fatalf("buckets account for %d events, want 3 — an event fell off a window edge", total)
+		t.Fatalf("buckets account for %d events, want 3, an event fell off a window edge", total)
 	}
 }

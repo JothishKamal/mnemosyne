@@ -31,7 +31,7 @@ type TraceQuery struct {
 // TraceSummary is a trace as it appears in a search result.
 //
 // RootService and RootRoute are the service and route of the trace's
-// earliest event by (hlc.wall_ms, hlc.logical, id.emitter_id) — not
+// earliest event by (hlc.wall_ms, hlc.logical, id.emitter_id), not
 // necessarily the first event a backend happens to encounter while scanning.
 type TraceSummary struct {
 	TraceID     []byte
@@ -44,7 +44,7 @@ type TraceSummary struct {
 }
 
 // EventStore is the append-mostly event index. Results are ordered by
-// (hlc.wall_ms, hlc.logical, id.emitter_id) — never by wall clock.
+// (hlc.wall_ms, hlc.logical, id.emitter_id), never by wall clock.
 type EventStore interface {
 	AppendEvents(ctx context.Context, events []*v1.Event) error
 	AppendGaps(ctx context.Context, gaps []*v1.Gap) error
@@ -65,7 +65,7 @@ type EventStore interface {
 type BlobStore interface {
 	Put(ctx context.Context, sha [32]byte, body []byte) (string, error)
 	Get(ctx context.Context, blobID string) ([]byte, error)
-	// Has reports which of shas are missing from the store — its return
+	// Has reports which of shas are missing from the store, its return
 	// value is the absent subset, not the present one.
 	Has(ctx context.Context, shas [][32]byte) ([][32]byte, error)
 	IDFor(sha [32]byte) string

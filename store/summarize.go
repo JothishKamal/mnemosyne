@@ -10,8 +10,8 @@ import (
 // SummarizeTraces groups events into trace summaries. Both backends use this
 // so their Traces results cannot diverge.
 //
-// events must already be sorted by (hlc.wall_ms, hlc.logical, id.emitter_id)
-// — RootService/RootRoute are taken from the first event seen per trace,
+// events must already be sorted by (hlc.wall_ms, hlc.logical, id.emitter_id).
+// RootService and RootRoute are taken from the first event seen per trace,
 // which is only the trace's earliest event if the input is HLC-sorted.
 func SummarizeTraces(events []*v1.Event, q TraceQuery) []TraceSummary {
 	byTrace := map[string]*TraceSummary{}
