@@ -69,10 +69,10 @@ async function loadAll() {
   renderInFlight(model);
   populateTraces(state.traces);
 
-  const parts = [`${model.lanes.length} lanes`];
-  if (model.inFlight.length) parts.push(`${model.inFlight.length} never ended`);
-  if (model.gaps.length) parts.push(`${model.gaps.length} gaps`);
-  if (model.skewWarnings.length) parts.push(`${model.skewWarnings.length} skew warnings`);
+  const parts = [`${(model.lanes ?? []).length} lanes`];
+  if ((model.inFlight ?? []).length) parts.push(`${model.inFlight.length} never ended`);
+  if ((model.gaps ?? []).length) parts.push(`${model.gaps.length} gaps`);
+  if ((model.skewWarnings ?? []).length) parts.push(`${model.skewWarnings.length} skew warnings`);
   $("status").textContent = parts.join(" · ");
 }
 
@@ -82,9 +82,9 @@ function renderLanes(m) {
   const host = $("lanes");
   host.replaceChildren();
 
-  const skewedServices = new Set(m.skewWarnings.map((s) => s.service));
+  const skewedServices = new Set((m.skewWarnings ?? []).map((s) => s.service));
 
-  for (const lane of m.lanes) {
+  for (const lane of m.lanes ?? []) {
     const row = document.createElement("div");
     row.className = "lane";
     if (skewedServices.has(lane.service)) row.classList.add("lane--skewed");
@@ -112,7 +112,7 @@ function renderLanes(m) {
     host.append(row);
   }
 
-  if (m.lanes.length === 0) {
+  if ((m.lanes ?? []).length === 0) {
     const empty = document.createElement("p");
     empty.className = "hint";
     empty.textContent = "No events in this window.";
@@ -129,7 +129,7 @@ function renderGaps(m) {
   host.replaceChildren();
 
   const span = m.toWallMs - m.fromWallMs || 1;
-  for (const g of m.gaps) {
+  for (const g of m.gaps ?? []) {
     const el = document.createElement("div");
     el.className = "gap";
     el.setAttribute("role", "alert");
@@ -151,7 +151,7 @@ function renderGaps(m) {
 function renderSkew(m) {
   const host = $("skew");
   host.replaceChildren();
-  for (const s of m.skewWarnings) {
+  for (const s of m.skewWarnings ?? []) {
     const el = document.createElement("div");
     el.className = "skew";
     el.setAttribute("role", "alert");
@@ -168,7 +168,7 @@ function renderInFlight(m) {
   const host = $("inflight-panel");
   host.replaceChildren();
 
-  if (m.inFlight.length === 0) return;
+  if ((m.inFlight ?? []).length === 0) return;
 
   const heading = document.createElement("h2");
   heading.className = "inflight-heading";
@@ -177,7 +177,7 @@ function renderInFlight(m) {
 
   const list = document.createElement("ul");
   list.className = "inflight-list";
-  for (const op of m.inFlight) {
+  for (const op of m.inFlight ?? []) {
     const li = document.createElement("li");
     const btn = document.createElement("button");
     btn.type = "button";
@@ -213,7 +213,7 @@ function populateTraces(traces) {
   const previous = sel.value;
   sel.replaceChildren();
 
-  if (traces.length === 0) {
+  if ((traces ?? []).length === 0) {
     const opt = document.createElement("option");
     opt.value = "";
     opt.textContent = "— no traces in window —";
@@ -223,7 +223,7 @@ function populateTraces(traces) {
   }
 
   sel.disabled = false;
-  for (const t of traces) {
+  for (const t of traces ?? []) {
     const hex = toHex(t.TraceID);
     const opt = document.createElement("option");
     opt.value = hex;
@@ -251,7 +251,8 @@ async function loadChain(eventId) {
     `/api/chain?trace=${traceHex}&emitter=${emitter}&seq=${eventId.sequence}&max=200`
   );
   renderChain(chain);
-  $("status").textContent = `chain: ${chain.nodes.length} node${chain.nodes.length === 1 ? "" : "s"}${chain.truncated ? " (truncated)" : ""}`;
+  const chainNodes = chain.nodes ?? [];
+  $("status").textContent = `chain: ${chainNodes.length} node${chainNodes.length === 1 ? "" : "s"}${chain.truncated ? " (truncated)" : ""}`;
 }
 
 function renderChain(chain) {
@@ -263,7 +264,7 @@ function renderChain(chain) {
   // reads top-to-bottom as "what happened first" -> "what it caused".
   const nodes = [...chain.nodes].reverse();
 
-  for (const node of nodes) {
+  for (const node of nodes ?? []) {
     const li = document.createElement("li");
     li.className = "chain-node";
     // Every edge shown here was observed — v1 renders only recorded edges.
@@ -308,7 +309,7 @@ function renderChain(chain) {
     host.append(li);
   }
 
-  if (nodes.length === 0) {
+  if ((nodes ?? []).length === 0) {
     const li = document.createElement("li");
     li.className = "hint";
     li.textContent = "No recorded chain for this event.";
