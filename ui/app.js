@@ -47,12 +47,46 @@ function reportError(e) {
   $("status").classList.add("status--error");
 }
 
+// resolveWindow decides which slice of time to render.
+//
+// An explicit from/to always wins. Left blank, the old default was 0 to now,
+// which is a window tens of years wide: every event in a recording collapses
+// into a single bucket and the timeline shows one indistinguishable smear.
+// Opening the tool with no input should instead show the recording it has, so
+// a blank window fits itself to the data, padded slightly so the first and
+// last events are not flush against the edge.
+async function resolveWindow() {
+  const rawFrom = $("from").value.trim();
+  const rawTo = $("to").value.trim();
+  if (rawFrom && rawTo) return { from: Number(rawFrom), to: Number(rawTo) };
+
+  const traces = await json(`/api/traces?from=0&to=${Date.now()}&limit=500`).catch(() => []);
+  if (!traces || traces.length === 0) {
+    // Nothing recorded yet: fall back to the literal request.
+    return { from: Number(rawFrom) || 0, to: Number(rawTo) || Date.now() };
+  }
+
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (const t of traces) {
+    if (t.StartWallMS < lo) lo = t.StartWallMS;
+    if (t.EndWallMS > hi) hi = t.EndWallMS;
+  }
+  const pad = Math.max(20, Math.round((hi - lo) * 0.08));
+  const from = rawFrom ? Number(rawFrom) : lo - pad;
+  const to = rawTo ? Number(rawTo) : hi + pad;
+
+  // Show the operator what was chosen, so the fit is not invisible magic.
+  if (!rawFrom) $("from").value = from;
+  if (!rawTo) $("to").value = to;
+  return { from, to };
+}
+
 async function loadAll() {
   $("status").classList.remove("status--error");
   $("status").textContent = "loading…";
 
-  const from = $("from").value || 0;
-  const to = $("to").value || Date.now();
+  const { from, to } = await resolveWindow();
   const resolution = Math.max(60, Math.floor($("timeline").clientWidth / 4) || 60);
 
   const [model, traces] = await Promise.all([
