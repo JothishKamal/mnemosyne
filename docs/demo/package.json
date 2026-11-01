@@ -1,0 +1,26 @@
+{
+  "name": "mnemosyne-demo",
+  "private": true,
+  "description": "Source for the Mnemosyne README demo video. Rendered with Remotion.",
+  "scripts": {
+    "music": "python music/score.py public/score.wav",
+    "studio": "remotion studio src/index.ts",
+    "render": "remotion render src/index.ts Demo ../media/mnemosyne-demo.mp4 --codec=h264 --crf=27 --x264-preset=slow --audio-codec=aac --audio-bitrate=192k",
+    "gif": "remotion render src/index.ts Teaser ../media/mnemosyne-teaser.gif --codec=gif --every-nth-frame=2 --scale=0.5",
+    "poster": "remotion still src/index.ts Demo ../media/mnemosyne-poster.png --frame=800"
+  },
+  "dependencies": {
+    "@remotion/cli": "^4.0.539",
+    "@remotion/google-fonts": "^4.0.539",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "remotion": "^4.0.539"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "typescript": "^7.0.2"
+  },
+  "allowScripts": {
+    "esbuild@0.28.1": true
+  }
+}
